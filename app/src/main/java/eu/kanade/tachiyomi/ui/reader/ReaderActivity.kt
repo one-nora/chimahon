@@ -1193,6 +1193,14 @@ class ReaderActivity : BaseActivity() {
         val viewer = viewModel.state.value.viewer as? PagerViewer ?: return
         viewer.config.let { config ->
             config.shiftDoublePage = !config.shiftDoublePage
+            
+            viewModel.manga?.id?.let { mangaId ->
+                getSharedPreferences("reader_prefs", MODE_PRIVATE)
+                    .edit()
+                    .putBoolean("shift_doublepage$mangaId", config.shiftDoublePage)
+                    .apply()
+            }
+
             viewModel.state.value.viewerChapters?.let {
                 viewer.updateShifting()
                 viewer.setChaptersInternal(it)
@@ -1250,7 +1258,12 @@ class ReaderActivity : BaseActivity() {
             if (readerPreferences.pageLayout().get() == PagerConfig.PageLayout.AUTOMATIC) {
                 setDoublePageMode(newViewer)
             }
-            viewModel.state.value.lastShiftDoubleState?.let { newViewer.config.shiftDoublePage = it }
+            
+            val savedShift = viewModel.manga?.id?.let { mangaId ->
+                getSharedPreferences("reader_prefs", MODE_PRIVATE)
+                    .getBoolean("shift_doublepage$mangaId", false)
+            } ?: false
+            newViewer.config.shiftDoublePage = viewModel.state.value.lastShiftDoubleState ?: savedShift
         }
 
         val manga = viewModel.state.value.manga
