@@ -21,7 +21,9 @@ import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
 import android.view.View.LAYER_TYPE_HARDWARE
+import android.view.ViewGroup
 import android.view.WindowManager
+import android.widget.FrameLayout
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -61,6 +63,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView
 import com.google.android.material.transition.platform.MaterialContainerTransform
@@ -92,6 +95,7 @@ import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.ui.base.activity.BaseActivity
 import eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences
+import eu.kanade.tachiyomi.ui.dictionary.prepareDictionaryWebViewShell
 import eu.kanade.tachiyomi.ui.main.MainActivity
 import eu.kanade.tachiyomi.ui.reader.ReaderViewModel.SetAsCoverResult.AddToLibraryFirst
 import eu.kanade.tachiyomi.ui.reader.ReaderViewModel.SetAsCoverResult.Error
@@ -291,8 +295,8 @@ class ReaderActivity : BaseActivity() {
 
         super.onCreate(savedInstanceState)
 
-        if (viewModel.isOcrEnabled()) {
-            ensureOcrResources()
+        val shouldWarmOcrResources = viewModel.isOcrEnabled()
+        if (shouldWarmOcrResources) {
             val prefs = Injekt.get<eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences>()
 
             lifecycleScope.launchIO {
@@ -316,6 +320,11 @@ class ReaderActivity : BaseActivity() {
         binding = ReaderActivityBinding.inflate(layoutInflater)
         setContentView(binding.root)
         binding.setComposeOverlay()
+        if (shouldWarmOcrResources) {
+            binding.root.post {
+                if (!isDestroyed) ensureOcrResources()
+            }
+        }
 
         if (viewModel.needsInit()) {
             val manga = intent.extras?.getLong("manga", -1) ?: -1L
@@ -696,8 +705,8 @@ class ReaderActivity : BaseActivity() {
             is PagerViewer -> {
                 if (viewer.onShowOcrPopup == null) {
                     viewer.onShowOcrPopup = { lookupString, fullText, charOffset, anchorX, anchorY, anchorWidth, anchorHeight, isVertical, _, sourcePage ->
-                        // Start lookup immediately on IO thread
-                        val deferredLookup = preDeferLookup(lookupString)
+                        // Start lookup immediately off the main thread.
+                        val (activeProfile, deferredLookup) = preDeferLookup(lookupString)
 
                         runOnUiThread {
                             val state = viewModel.state.value
@@ -709,10 +718,11 @@ class ReaderActivity : BaseActivity() {
                             } else {
                                 null
                             }
-                            ensureOcrResources()
+                            ensureOcrResources(attachForWarmup = false)
                             ocrPopupState = OcrPopupState(
                                 lookupString, fullText, charOffset, ocrWebView!!, dictionaryRepository,
                                 anchorX, anchorY, anchorWidth, anchorHeight, isVertical, mediaInfo, sourcePage, deferredLookup
+                                anchorX, anchorY, anchorWidth, anchorHeight, isVertical, activeProfile, mediaInfo, sourcePage, deferredLookup
                             )
                         }
                     }
@@ -726,8 +736,8 @@ class ReaderActivity : BaseActivity() {
             is WebtoonViewer -> {
                 if (viewer.onShowOcrPopup == null) {
                     viewer.onShowOcrPopup = { lookupString, fullText, charOffset, anchorX, anchorY, anchorWidth, anchorHeight, isVertical, _, sourcePage ->
-                        // Start lookup immediately on IO thread
-                        val deferredLookup = preDeferLookup(lookupString)
+                        // Start lookup immediately off the main thread.
+                        val (activeProfile, deferredLookup) = preDeferLookup(lookupString)
 
                         runOnUiThread {
                             val state = viewModel.state.value
@@ -739,10 +749,11 @@ class ReaderActivity : BaseActivity() {
                             } else {
                                 null
                             }
-                            ensureOcrResources()
+                            ensureOcrResources(attachForWarmup = false)
                             ocrPopupState = OcrPopupState(
                                 lookupString, fullText, charOffset, ocrWebView!!, dictionaryRepository,
                                 anchorX, anchorY, anchorWidth, anchorHeight, isVertical, mediaInfo, sourcePage, deferredLookup
+                                anchorX, anchorY, anchorWidth, anchorHeight, isVertical, activeProfile, mediaInfo, sourcePage, deferredLookup
                             )
                         }
                     }
@@ -1983,15 +1994,30 @@ class ReaderActivity : BaseActivity() {
     private var ocrWebView: android.webkit.WebView? = null
     private val dictionaryRepository: chimahon.DictionaryRepository by injectLazy()
 
-    private fun ensureOcrResources() {
-        if (ocrWebView == null) {
-            ocrWebView = createOcrWebView(this)
+    private fun ensureOcrResources(attachForWarmup: Boolean = true) {
+        val webView = ocrWebView ?: createOcrWebView(this).also { ocrWebView = it }
+        if (attachForWarmup && ocrPopupState == null) {
+            attachOcrWebViewForWarmup(webView)
         }
     }
 
     private fun releaseOcrResources() {
-        ocrWebView?.destroy()
+        ocrWebView?.let { webView ->
+            (webView.parent as? ViewGroup)?.removeView(webView)
+            webView.destroy()
+        }
         ocrWebView = null
+    }
+
+    private fun attachOcrWebViewForWarmup(webView: android.webkit.WebView) {
+        if (!::binding.isInitialized || webView.parent != null) return
+        webView.alpha = 0f
+        webView.isClickable = false
+        webView.isFocusable = false
+        binding.root.addView(
+            webView,
+            FrameLayout.LayoutParams(1, 1),
+        )
     }
 
     private var cachedActiveProfile: chimahon.anki.AnkiProfile? = null
@@ -2012,24 +2038,18 @@ class ReaderActivity : BaseActivity() {
         val (_, termPaths) = getOrRefreshLookupPaths()
         val result = dictionaryRepository.lookup(lookupString.trim(), termPaths)
         return kotlinx.coroutines.CompletableDeferred(result)
+    private fun preDeferLookup(
+        lookupString: String,
+    ): Pair<chimahon.anki.AnkiProfile, kotlinx.coroutines.Deferred<chimahon.DictionaryRepository.LookupResult2>> {
+        val (profile, termPaths) = getOrRefreshLookupPaths()
+        val deferred = lifecycleScope.async(Dispatchers.Default) {
+            dictionaryRepository.lookup(lookupString.trim(), termPaths, profile.languageCode)
+        }
+        return profile to deferred
     }
 
     @SuppressLint("SetJavaScriptEnabled")
     private fun createOcrWebView(ctx: Context): android.webkit.WebView {
-        return android.webkit.WebView(ctx).apply {
-            settings.javaScriptEnabled = true
-            settings.domStorageEnabled = true
-            settings.blockNetworkLoads = true
-            settings.loadsImagesAutomatically = true
-            setBackgroundColor(0x00000000)
-            // Pre-load bootstrap HTML to avoid startup delay on first lookup
-            loadDataWithBaseURL(
-                "https://chima.local/popup/",
-                eu.kanade.tachiyomi.ui.dictionary.getDictionaryBootstrapHtml(ctx),
-                "text/html",
-                "utf-8",
-                null,
-            )
-        }
+        return prepareDictionaryWebViewShell(ctx)
     }
 }

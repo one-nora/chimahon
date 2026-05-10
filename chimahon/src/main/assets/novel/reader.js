@@ -343,28 +343,32 @@ window.hoshiReader = {
 
         const container = this.findParagraph(hit.node) || document.body;
         const walker = this.createWalker(container);
-        const maxLength = 40;
 
         let word = '';
         let node = hit.node;
         let offset = hit.offset;
         let ranges = [];
+        let reachedSentenceBreak = false;
 
         walker.currentNode = node;
-        while (word.length < maxLength && node) {
+        while (!reachedSentenceBreak && node) {
             const content = node.textContent;
             let start = offset;
-            while (offset < content.length && word.length < maxLength) {
+            while (offset < content.length) {
                 const char = content[offset];
-                if (this.isScanBoundary(char)) break;
+                if (this.sentenceDelimiters.includes(char)) {
+                    reachedSentenceBreak = true;
+                    break;
+                }
                 word += char;
                 offset++;
             }
             if (offset > start) ranges.push({ node: node, start: start, end: offset });
-            if (offset < content.length || word.length >= maxLength) break;
+            if (reachedSentenceBreak || offset < content.length) break;
             node = walker.nextNode();
             offset = 0;
         }
+        word = word.trim();
 
         if (word.length > 0) {
             this.clearSelection();
@@ -393,18 +397,7 @@ window.hoshiReader = {
             }
 
             if (window.HoshiAndroid && window.HoshiAndroid.onTextSelected) {
-                window.HoshiAndroid.onTextSelected(word, '', minX, minY, maxX - minX, maxY - minY);
-
-                const capturedNode = hit.node;
-                const capturedOffset = hit.offset;
-                const self = this;
-                setTimeout(function() {
-                    if (window.HoshiAndroid && window.HoshiAndroid.onSentenceReady) {
-                        const sentence = self.getSentence(capturedNode, capturedOffset);
-                        window.HoshiAndroid.onSentenceReady(sentence);
-                    }
-                }, 0);
-
+                window.HoshiAndroid.onTextSelected(word, sentence, minX, minY, maxX - minX, maxY - minY);
                 return true;
             }
         }

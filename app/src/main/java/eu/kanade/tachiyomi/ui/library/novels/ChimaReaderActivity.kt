@@ -1,44 +1,41 @@
 package eu.kanade.tachiyomi.ui.library.novels
 
 import android.os.Bundle
+import android.view.ViewGroup
 import android.webkit.WebView
+import android.widget.FrameLayout
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.lifecycle.lifecycleScope
-import androidx.compose.ui.Modifier
-import chimahon.DictionaryRepository
-import com.canopus.chimareader.ui.reader.NovelReaderActivity
-import eu.kanade.tachiyomi.ui.reader.viewer.OcrLookupPopup
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
-import androidx.compose.material3.Switch
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.compose.runtime.collectAsState
-import eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences
-import eu.kanade.tachiyomi.ui.dictionary.getDictionaryPaths
-import uy.kohesive.injekt.Injekt
-import uy.kohesive.injekt.api.get
-import kotlinx.coroutines.async
-import kotlinx.coroutines.Dispatchers
-import kotlin.concurrent.thread
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import chimahon.DictionaryRepository
+import com.canopus.chimareader.ui.reader.NovelReaderActivity
+import eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences
+import eu.kanade.tachiyomi.ui.dictionary.getDictionaryPaths
+import eu.kanade.tachiyomi.ui.dictionary.prepareDictionaryWebViewShell
+import eu.kanade.tachiyomi.ui.reader.viewer.OcrLookupPopup
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 
 /**
  * App-side subclass of [NovelReaderActivity] that wires text-selection events
@@ -50,7 +47,7 @@ import kotlinx.coroutines.launch
  * automatically lands here without any chimahon → app module import.
  */
 class ChimaReaderActivity : NovelReaderActivity() {
-    
+
     private val readerPreferences: eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences by uy.kohesive.injekt.injectLazy()
     private var popupWebView: WebView? = null
     private val novelReaderSettings by lazy { com.canopus.chimareader.data.NovelReaderSettings(this) }
@@ -67,12 +64,17 @@ class ChimaReaderActivity : NovelReaderActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        ensurePopupWebView()
+        window.decorView.post {
+            if (!isDestroyed) ensurePopupWebView()
+        }
 
         val prefs = Injekt.get<DictionaryPreferences>()
 
         // Warm up and populate the cache on a background thread.
         thread(name = "DictionaryWarmup", start = true) {
+        // Warm up and populate the cache off the main thread.
+        // Novel reader has no manga/source context → always falls through to global profile.
+        lifecycleScope.launch(Dispatchers.Default) {
             val profile = prefs.profileStore.getActiveProfile()
             val termPaths = getDictionaryPaths(this@ChimaReaderActivity, profile)
             cachedActiveProfile = profile
@@ -102,22 +104,26 @@ class ChimaReaderActivity : NovelReaderActivity() {
 
     @android.annotation.SuppressLint("SetJavaScriptEnabled")
     private fun ensurePopupWebView(): WebView {
-        return popupWebView ?: WebView(this).also {
+        val webView = popupWebView ?: WebView(this).also {
             popupWebView = it
-            it.settings.javaScriptEnabled = true
-            it.settings.domStorageEnabled = true
-            it.settings.blockNetworkLoads = true
-            it.settings.loadsImagesAutomatically = true
-            it.setBackgroundColor(0x00000000)
-            // Pre-load bootstrap HTML to avoid startup delay on first lookup
-            it.loadDataWithBaseURL(
-                "https://chima.local/popup/",
-                eu.kanade.tachiyomi.ui.dictionary.getDictionaryBootstrapHtml(this),
-                "text/html",
-                "utf-8",
-                null,
-            )
+            prepareDictionaryWebViewShell(this, it)
         }
+        if (!isPopupActive) {
+            attachPopupWebViewForWarmup(webView)
+        }
+        return webView
+    }
+
+    private fun attachPopupWebViewForWarmup(webView: WebView) {
+        if (webView.parent != null) return
+        val root = window.decorView as? ViewGroup ?: return
+        webView.alpha = 0f
+        webView.isClickable = false
+        webView.isFocusable = false
+        root.addView(
+            webView,
+            FrameLayout.LayoutParams(1, 1),
+        )
     }
 
     override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
@@ -220,6 +226,7 @@ class ChimaReaderActivity : NovelReaderActivity() {
         val anchorWidth: Float,
         val anchorHeight: Float,
         val isVertical: Boolean,
+        val activeProfile: chimahon.anki.AnkiProfile,
     )
 
     private var lookupDeferred: kotlinx.coroutines.Deferred<chimahon.DictionaryRepository.LookupResult2>? = null
@@ -230,13 +237,16 @@ class ChimaReaderActivity : NovelReaderActivity() {
 
         lookupDeferred = lifecycleScope.async(Dispatchers.IO) {
             Injekt.get<DictionaryRepository>().lookup(word, termPaths)
+        cancelActiveLookup()
+        lookupDeferred = lifecycleScope.async(Dispatchers.Default) {
+            Injekt.get<DictionaryRepository>().lookup(word.trim(), termPaths, profile.languageCode)
         }
-        
-        lookupState = LookupState(word, sentence, x, y, w, h, isVerticalWriting)
+
+        lookupState = LookupState(word, sentence, x, y, w, h, isVerticalWriting, profile)
         isPopupActive = true
     }
 
-    /** Receives the sentence context asynchronously after onLookupRequested (Fix #4). */
+    /** Legacy bridge hook; current reader JS sends the sentence with onLookupRequested. */
     override fun onSentenceReady(sentence: String) {
         val current = lookupState ?: return
         if (current.sentence.isBlank() && sentence.isNotBlank()) {
@@ -247,9 +257,13 @@ class ChimaReaderActivity : NovelReaderActivity() {
     override fun onDismissPopupRequested() {
         super.onDismissPopupRequested()
         lookupState = null
+        cancelActiveLookup()
+        isPopupActive = false
+    }
+
+    private fun cancelActiveLookup() {
         lookupDeferred?.cancel()
         lookupDeferred = null
-        isPopupActive = false
     }
 
     /**
@@ -268,9 +282,9 @@ class ChimaReaderActivity : NovelReaderActivity() {
 
         BackHandler {
             lookupState = null
+            cancelActiveLookup()
             isPopupActive = false
         }
-
 
         val mediaInfo = readerViewModel?.let { vm ->
             chimahon.MediaInfo(
@@ -283,8 +297,9 @@ class ChimaReaderActivity : NovelReaderActivity() {
                 lookupString = state.word,
                 fullText = state.sentence,
                 charOffset = state.sentence.indexOf(state.word).coerceAtLeast(0),
-                onDismiss = { 
+                onDismiss = {
                     lookupState = null
+                    cancelActiveLookup()
                     isPopupActive = false
                 },
                 webView = webView,
@@ -294,6 +309,7 @@ class ChimaReaderActivity : NovelReaderActivity() {
                 anchorWidth = state.anchorWidth,
                 anchorHeight = state.anchorHeight,
                 isVertical = state.isVertical,
+                activeProfile = state.activeProfile,
                 // No screenshot — plain text selection only
                 mediaInfo = mediaInfo,
                 onRequestScreenshot = null,
@@ -310,7 +326,11 @@ class ChimaReaderActivity : NovelReaderActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        popupWebView?.destroy()
+        cancelActiveLookup()
+        popupWebView?.let { webView ->
+            (webView.parent as? ViewGroup)?.removeView(webView)
+            webView.destroy()
+        }
         popupWebView = null
         // The retained WebView must be destroyed with the Activity to avoid leaks
         lookupState = null

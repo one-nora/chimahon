@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -42,6 +41,7 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.ui.draw.alpha
 import eu.kanade.domain.ui.model.ThemeMode
 import eu.kanade.domain.ui.UiPreferences
 import eu.kanade.presentation.theme.colorscheme.CustomColorScheme
@@ -124,6 +124,9 @@ fun OcrLookupPopup(
     val styles = currentFrame?.styles ?: emptyList()
     val mediaDataUris = currentFrame?.mediaDataUris ?: emptyMap()
     val existingExpressions = currentFrame?.existingExpressions ?: emptySet()
+    var contentReady by remember { mutableStateOf(false) }
+    var hasRenderedContent by remember { mutableStateOf(false) }
+    var lookupGeneration by remember { mutableIntStateOf(0) }
 
     /** Build the [TabInfo] list that is passed to the JS tab bar. */
     fun buildTabs(): List<TabInfo> = lookupStack.mapIndexed { i, frame ->
@@ -195,10 +198,13 @@ fun OcrLookupPopup(
         }
 
         val finalQuery = if (isRecursive) cleanQuery else query
+        val generation = ++lookupGeneration
+        val shouldShowLoading = !isRecursive && !hasRenderedContent
 
         fun handleResult(result: chimahon.DictionaryRepository.LookupResult2, phaseStart: Long) {
+            if (generation != lookupGeneration) return
             if (isRecursive && result.results.isEmpty()) {
-                isLoading = false
+                if (shouldShowLoading) isLoading = false
                 return
             }
 
@@ -276,7 +282,9 @@ fun OcrLookupPopup(
         if (!deferred.isCompleted) {
             // Must await in a coroutine
             scope.launch {
-                isLoading = true
+                if (shouldShowLoading) {
+                    isLoading = true
+                }
                 errorMessage = null
                 val phaseStart = android.os.SystemClock.elapsedRealtime()
                 try {
@@ -284,6 +292,7 @@ fun OcrLookupPopup(
                     handleResult(result, phaseStart)
                 } catch (e: Exception) {
                     if (e is CancellationException) throw e
+                    if (generation != lookupGeneration) return@launch
                     errorMessage = e.message ?: "Lookup failed"
                     isLoading = false
                 }
@@ -298,6 +307,7 @@ fun OcrLookupPopup(
                 val result = deferred.getCompleted()
                 handleResult(result, phaseStart)
             } catch (e: Exception) {
+                if (generation != lookupGeneration) return
                 errorMessage = e.message ?: "Lookup failed"
                 isLoading = false
             }
@@ -541,14 +551,20 @@ fun OcrLookupPopup(
 
     LaunchedEffect(lookupString, ankiEnabled, ankiModel) {
         if (lookupString.isBlank()) {
+            lookupGeneration++
             lookupStack.clear()
             activeTabIndex = 0
             isLoading = false
+            contentReady = false
+            hasRenderedContent = false
             return@LaunchedEffect
         }
         // Reset the stack and load the initial term
         lookupStack.clear()
         activeTabIndex = 0
+        isLoading = initialLookupDeferred != null && !initialLookupDeferred.isCompleted
+        contentReady = false
+        hasRenderedContent = false
         pushLookup(lookupString, deferredResult = initialLookupDeferred)
     }
 
@@ -570,6 +586,7 @@ fun OcrLookupPopup(
             modifier = modifier
                 .width(actualWidthDp)
                 .height(actualHeightDp)
+                .alpha(if (contentReady || errorMessage != null) 1f else 0f)
                 .pointerInput(Unit) {
                     awaitPointerEventScope {
                         while (true) {
@@ -610,7 +627,8 @@ fun OcrLookupPopup(
             shadowElevation = 6.dp,
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
-                DictionaryEntryWebView(
+                if (currentFrame != null) {
+                    DictionaryEntryWebView(
                     results = results,
                     styles = styles,
                     mediaDataUris = mediaDataUris,
@@ -633,12 +651,18 @@ fun OcrLookupPopup(
                     onRecursiveLookup = onRecursiveLookup,
                     onTabSelect = onTabSelect,
                     onBack = onBack,
-                    isLoading = isLoading,
-                    modifier = Modifier.fillMaxSize(),
-                )
-
-                if (isLoading && results.isEmpty()) {
-                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                        hideOnContentInvalidated = !hasRenderedContent,
+                        isLoading = isLoading,
+                        onContentReadyChange = { ready ->
+                            if (ready) {
+                                contentReady = true
+                                hasRenderedContent = true
+                            } else if (!hasRenderedContent) {
+                                contentReady = false
+                            }
+                        },
+                        modifier = Modifier.fillMaxSize(),
+                    )
                 }
 
                 if (errorMessage != null) {

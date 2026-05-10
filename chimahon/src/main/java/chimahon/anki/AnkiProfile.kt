@@ -30,6 +30,15 @@ data class AnkiProfile(
     // Dictionary configuration
     val dictionaryOrder: List<String> = emptyList(),
     val enabledDictionaries: Set<String> = emptySet(), // empty = all enabled
+    val dictionaryCollapseMode: String = DICTIONARY_COLLAPSE_EXPAND_ALL,
+    val dictionaryDisplayModes: Map<String, String> = emptyMap(),
+    /**
+     * BCP-47-style language code for this profile, e.g. "ja", "ko", "ar", "en".
+     * Used by [chimahon.dictionary.DictionaryProfileResolver] to auto-select a
+     * matching profile when a source declares a specific language.
+     * Empty string means "any / not language-specific".
+     */
+    val languageCode: String = "",
 ) {
 
     fun toJson(): JSONObject = JSONObject().apply {
@@ -46,9 +55,21 @@ data class AnkiProfile(
         put("ankiCropMode", ankiCropMode)
         put("dictionaryOrder", JSONArray(dictionaryOrder))
         put("enabledDictionaries", JSONArray(enabledDictionaries.toList()))
+
+        put("dictionaryCollapseMode", dictionaryCollapseMode)
+        put("dictionaryDisplayModes", JSONObject(dictionaryDisplayModes))
+        put("languageCode", languageCode)
     }
 
     companion object {
+        const val DICTIONARY_COLLAPSE_EXPAND_ALL = "expand_all"
+        const val DICTIONARY_COLLAPSE_EXPAND_FIRST_AVAILABLE = "expand_first_available"
+        const val DICTIONARY_COLLAPSE_COLLAPSE_ALL = "collapse_all"
+        const val DICTIONARY_COLLAPSE_CUSTOM = "custom"
+
+        const val DICTIONARY_DISPLAY_ALWAYS_EXPANDED = "always_expanded"
+        const val DICTIONARY_DISPLAY_FALLBACK = "fallback"
+        const val DICTIONARY_DISPLAY_ALWAYS_COLLAPSED = "always_collapsed"
 
         fun fromJson(json: JSONObject): AnkiProfile = AnkiProfile(
             id = json.getString("id"),
@@ -68,6 +89,20 @@ data class AnkiProfile(
             enabledDictionaries = json.optJSONArray("enabledDictionaries")
                 ?.let { arr -> (0 until arr.length()).map { arr.getString(it) }.toSet() }
                 ?: emptySet(),
+
+            dictionaryCollapseMode = json.optString("dictionaryCollapseMode", DICTIONARY_COLLAPSE_EXPAND_ALL),
+            dictionaryDisplayModes = json.optJSONObject("dictionaryDisplayModes")
+                ?.let { obj ->
+                    buildMap {
+                        val keys = obj.keys()
+                        while (keys.hasNext()) {
+                            val key = keys.next()
+                            put(key, obj.optString(key, DICTIONARY_DISPLAY_FALLBACK))
+                        }
+                    }
+                }
+                ?: emptyMap(),
+            languageCode = json.optString("languageCode", ""),
         )
 
         /**

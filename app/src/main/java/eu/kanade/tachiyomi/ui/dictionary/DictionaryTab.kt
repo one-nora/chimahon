@@ -2,7 +2,6 @@ package eu.kanade.tachiyomi.ui.dictionary
 
 import android.os.SystemClock
 import android.util.Base64
-import android.util.Log
 import android.webkit.WebView
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -16,7 +15,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Clear
 import androidx.compose.material.icons.outlined.Search
-import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -41,7 +39,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
-import cafe.adriel.voyager.navigator.tab.LocalTabNavigator
 import cafe.adriel.voyager.navigator.tab.TabOptions
 import chimahon.DictionaryStyle
 import chimahon.HoshiDicts
@@ -65,8 +62,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.yield
-import org.apache.http.client.methods.RequestBuilder.put
 import org.json.JSONArray
 import org.json.JSONObject
 import tachiyomi.core.common.i18n.stringResource
@@ -78,13 +73,7 @@ import uy.kohesive.injekt.api.get
 import java.io.File
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
-import java.text.SimpleDateFormat
-import java.util.Collections.emptyList
-import java.util.Collections.emptyMap
-import java.util.Collections.emptySet
-import java.util.Date
 import java.util.LinkedHashMap
-import java.util.Locale
 
 /** One entry in the recursive-lookup history stack (shared by tab and popup). */
 private data class TabLookupFrame(
@@ -229,6 +218,7 @@ data object DictionaryTab : Tab {
         /** Push a lookup onto the stack; cancels any in-flight search first. */
         fun stackLookup(rawQuery: String) {
             searchJob?.cancel()
+            shouldMountWebView = true
             searchJob = scope.launch {
                 isLoading = true
                 errorMessage = null
@@ -256,6 +246,23 @@ data object DictionaryTab : Tab {
                 errorMessage = lookupResult.error
                 hasSearched = true
                 isLoading = false
+
+                if (lookupResult.results.isNotEmpty()) {
+                    val frameIndex = activeTabIndex
+                    val frameQuery = rawQuery
+                    val frameResults = lookupResult.results
+                    scope.launch(Dispatchers.IO) {
+                        val media = sessionManager.loadMediaDataUris(frameResults)
+                        if (media.isNotEmpty()) {
+                            withContext(Dispatchers.Main) {
+                                val frame = lookupStack.getOrNull(frameIndex)
+                                if (frame?.query == frameQuery && frame.results === frameResults) {
+                                    lookupStack[frameIndex] = frame.copy(mediaDataUris = media)
+                                }
+                            }
+                        }
+                    }
+                }
 
                 // Now run Anki check in background without blocking the UI
                 if (ankiEnabled && lookupResult.results.isNotEmpty()) {
@@ -365,25 +372,6 @@ data object DictionaryTab : Tab {
                 val paths = getDictionaryPaths(context, activeProfile)
                 sessionManager.warmUp(paths)
             }
-            
-            // Pre-load the WebView shell immediately
-            if (retainedWebView == null) {
-                retainedWebView = WebView(context).apply {
-                    settings.javaScriptEnabled = true
-                    settings.domStorageEnabled = true
-                    loadDataWithBaseURL(
-                        "https://chima.local/popup/",
-                        getDictionaryBootstrapHtml(context),
-                        "text/html",
-                        "utf-8",
-                        null
-                    )
-                }
-            }
-
-            // Mount after first frame so the search field appears immediately
-            yield()
-            shouldMountWebView = true
         }
 
         DisposableEffect(Unit) {
@@ -590,6 +578,7 @@ data object DictionaryTab : Tab {
         private var configuredTermPaths: List<String> = emptyList()
         private var cachedStyles: List<DictionaryStyle> = emptyList()
 
+        @Synchronized
         fun warmUp(termPaths: List<String>) {
             val activeSession = session ?: HoshiDicts.createLookupObject().also { session = it }
             if (termPaths != configuredTermPaths) {
@@ -605,6 +594,8 @@ data object DictionaryTab : Tab {
         }
 
         fun lookup(query: String, termPaths: List<String>): LookupUiResult {
+        @Synchronized
+        fun lookup(query: String, termPaths: List<String>, languageCode: String = ""): LookupUiResult {
             val t0 = SystemClock.elapsedRealtime()
             val ramBefore = currentUsedRamMb()
             var sessionCreateMs = 0L
@@ -624,11 +615,24 @@ data object DictionaryTab : Tab {
 
             val lookupStart = SystemClock.elapsedRealtime()
             val results = lookupByTextType(activeSession, query, 50)
+            val effectiveLang = languageCode.lowercase()
+            val genericDeinflector = chimahon.dictionary.DeinflectorRegistry.get(effectiveLang)
+            val results = if (effectiveLang == "ja") {
+                HoshiDicts.lookup(activeSession, query, 50, 16).toList()
+            } else if (genericDeinflector != null) {
+                val preprocessed = genericDeinflector.preProcess(query)
+                val deinflected = preprocessed.flatMap { genericDeinflector.deinflect(it, effectiveLang) }
+                val candidates = deinflected.map { it.text }.distinct()
+                if (candidates.isEmpty()) {
+                    emptyList()
+                } else {
+                    val terms = HoshiDicts.query(activeSession, candidates, 50)
+                    genericDeinflector.wrapResults(query, candidates, terms.toList())
+                }
+            } else {
+                HoshiDicts.lookup(activeSession, query, 50, 16).toList()
+            }
             val lookupMs = SystemClock.elapsedRealtime() - lookupStart
-
-            val mediaStart = SystemClock.elapsedRealtime()
-            val mediaDataUris = buildMediaDataUris(activeSession, results)
-            val mediaMs = SystemClock.elapsedRealtime() - mediaStart
 
             val totalMs = SystemClock.elapsedRealtime() - t0
             val cssBytes = cachedStyles.sumOf { it.styles.length }
@@ -638,7 +642,7 @@ data object DictionaryTab : Tab {
                 sessionCreateMs = sessionCreateMs,
                 rebuildMs = rebuildMs,
                 lookupMs = lookupMs,
-                mediaMs = mediaMs,
+                mediaMs = 0L,
                 ramBeforeMb = ramBefore,
                 ramAfterMb = currentUsedRamMb(),
                 resultCount = results.size,
@@ -649,11 +653,17 @@ data object DictionaryTab : Tab {
             return LookupUiResult(
                 results = results,
                 styles = cachedStyles,
-                mediaDataUris = mediaDataUris,
+                mediaDataUris = emptyMap(),
                 error = null,
                 diagnostics = diagnostics,
                 debugDumpDir = null,
             )
+        }
+
+        @Synchronized
+        fun loadMediaDataUris(results: List<LookupResult>): Map<String, String> {
+            val activeSession = session ?: return emptyMap()
+            return buildMediaDataUris(activeSession, results)
         }
 
         private fun countJsonGlossaries(results: List<LookupResult>): Int {
@@ -800,6 +810,7 @@ data object DictionaryTab : Tab {
             return usedBytes / (1024L * 1024L)
         }
 
+        @Synchronized
         fun close() {
             session?.let(HoshiDicts::destroyLookupObject)
             session = null

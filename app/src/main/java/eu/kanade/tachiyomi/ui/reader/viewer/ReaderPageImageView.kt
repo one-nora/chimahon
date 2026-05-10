@@ -684,7 +684,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
             logcat { "OCR tap ignored on punctuation/non-word char '$tappedChar' at offset=$charOffset" }
             return true
         }
-        val lookupString = block.fullText.substring(charOffset)
+        val lookupString = extractOcrLookupString(block.fullText, charOffset)
         logcat {
             "OCR tap: lookup offset=$charOffset remainingChars=${lookupString.length} x=$viewX y=$viewY"
         }
@@ -743,6 +743,18 @@ open class ReaderPageImageView @JvmOverloads constructor(
             type != Character.CURRENCY_SYMBOL.toInt() &&
             type != Character.MODIFIER_SYMBOL.toInt() &&
             type != Character.OTHER_SYMBOL.toInt()
+    }
+
+    private fun extractOcrLookupString(text: String, start: Int): String {
+        val result = StringBuilder()
+        var index = start.coerceIn(0, text.length)
+        while (index < text.length) {
+            val char = text[index]
+            if (!isLookupStartChar(char)) break
+            result.append(char)
+            index++
+        }
+        return result.toString()
     }
 
     /**
