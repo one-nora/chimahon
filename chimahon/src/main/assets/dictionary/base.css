@@ -441,14 +441,16 @@ body {
   padding-left: 1.2em;
 }
 
-/* Ensure numbered markers in dict content aren't clipped by stripped padding */
-#entries .gloss-sc-ol {
+/* Ensure list markers in dict content aren't clipped or overlapping */
+#entries .gloss-sc-ol,
+#entries .gloss-sc-ul {
   padding-left: 1.2em;
-  margin: 2px 0;
+  margin: 0.3em 0;
 }
 
-#entries .gloss-sc-ol li {
-  margin: 0.08em 0;
+#entries .gloss-sc-ol li,
+#entries .gloss-sc-ul li {
+  margin: 0.15em 0;
 }
 
 .gloss-sc-th, .gloss-sc-td, th, td {
@@ -639,4 +641,184 @@ table {
   text-align: center;
   color: var(--secondary);
   font-style: italic;
+}
+
+/* ── E-Ink Mode ────────────────────────────────────────── */
+/* Activated by data-chima-eink-mode="true" on <html>      */
+
+html[data-chima-eink-mode="true"],
+html[data-chima-eink-mode="true"] body {
+  --bg: #fff;
+  --fg: #000;
+  --secondary: #000;
+  --border: #000;
+  --hover-bg: #fff;
+  --tab-bg: #fff;
+  --accent: #000;
+  --on-accent: #fff;
+  --pronunciation-annotation-color: #000;
+  color-scheme: light;
+}
+
+html[data-chima-eink-mode="true"] *,
+html[data-chima-eink-mode="true"] *::before,
+html[data-chima-eink-mode="true"] *::after {
+  transition: none !important;
+  animation-duration: 0s !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+}
+
+html[data-chima-eink-mode="true"] :active {
+  transform: none !important;
+}
+
+html[data-chima-eink-mode="true"] .tag-label,
+html[data-chima-eink-mode="true"] .tag-body {
+  border-radius: 0 !important;
+  border: 1px solid #000 !important;
+}
+
+html[data-chima-eink-mode="true"] .tag-label {
+  background: #fff !important;
+  color: #000 !important;
+}
+
+html[data-chima-eink-mode="true"] .tag-body {
+  background: #fff !important;
+  color: #000 !important;
+}
+
+html[data-chima-eink-mode="true"] .dictionary-header {
+  border-radius: 0 !important;
+  transition: none !important;
+}
+
+html[data-chima-eink-mode="true"] .dict-arrow {
+  transition: none !important;
+}
+
+html[data-chima-eink-mode="true"] .word-audio-btn,
+html[data-chima-eink-mode="true"] .anki-add-btn,
+html[data-chima-eink-mode="true"] .anki-open-btn {
+  border-radius: 0 !important;
+}
+
+html[data-chima-eink-mode="true"] .word-audio-btn:hover,
+html[data-chima-eink-mode="true"] .anki-add-btn:hover,
+html[data-chima-eink-mode="true"] .anki-open-btn:hover {
+  background: transparent !important;
+  opacity: 1 !important;
+}
+
+html[data-chima-eink-mode="true"] .lookup-tab {
+  border-radius: 0 !important;
+}
+
+html[data-chima-eink-mode="true"] .lookup-tab.active {
+  background: #000 !important;
+  color: #fff !important;
+  border-color: #000 !important;
+  box-shadow: none !important;
+}
+
+html[data-chima-eink-mode="true"] .lookup-tab:active {
+  transform: none !important;
+}
+
+html[data-chima-eink-mode="true"] .floating-nav-btn {
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+html[data-chima-eink-mode="true"] .inflection-step-card {
+  border-radius: 0 !important;
+}
+
+html[data-chima-eink-mode="true"] .inflection-step-index {
+  border-radius: 0 !important;
+  background: #000 !important;
+  color: #fff !important;
+}
+
+html[data-chima-eink-mode="true"] .dictionary-header:hover {
+  background: transparent !important;
+  opacity: 1 !important;
+}
+
+html[data-chima-eink-mode="true"] .lookup-tabs {
+  border-bottom-color: #000 !important;
+}
+
+html[data-chima-eink-mode="true"] .entry + .entry {
+  border-top-color: #000 !important;
+}
+
+html[data-chima-eink-mode="true"] .gloss-sc-th,
+html[data-chima-eink-mode="true"] .gloss-sc-td,
+html[data-chima-eink-mode="true"] th,
+html[data-chima-eink-mode="true"] td {
+  border-color: #000 !important;
+}
+
+html[data-chima-eink-mode="true"] .anki-add-btn.anki-added {
+  color: #000 !important;
+}
+
+html[data-theme="dark"][data-chima-eink-mode="true"],
+html[data-theme="dark"][data-chima-eink-mode="true"] body {
+  --bg: #000;
+  --fg: #fff;
+  --secondary: #fff;
+  --border: #fff;
+  --hover-bg: #000;
+  --tab-bg: #000;
+  --accent: #fff;
+  --on-accent: #000;
+  --pronunciation-annotation-color: #fff;
+  color-scheme: dark;
+}
+
+html[data-theme="dark"][data-chima-eink-mode="true"] .tag-label,
+html[data-theme="dark"][data-chima-eink-mode="true"] .tag-body {
+  border-color: #fff !important;
+}
+
+html[data-theme="dark"][data-chima-eink-mode="true"] .tag-label {
+  background: #000 !important;
+  color: #fff !important;
+}
+
+html[data-theme="dark"][data-chima-eink-mode="true"] .tag-body {
+  background: #000 !important;
+  color: #fff !important;
+}
+
+html[data-theme="dark"][data-chima-eink-mode="true"] .lookup-tab.active {
+  background: #fff !important;
+  color: #000 !important;
+  border-color: #fff !important;
+}
+
+html[data-theme="dark"][data-chima-eink-mode="true"] .lookup-tab {
+  border-color: #fff !important;
+}
+
+html[data-theme="dark"][data-chima-eink-mode="true"] .inflection-step-index {
+  background: #fff !important;
+  color: #000 !important;
+}
+
+html[data-theme="dark"][data-chima-eink-mode="true"] .lookup-tabs {
+  border-bottom-color: #fff !important;
+}
+
+html[data-theme="dark"][data-chima-eink-mode="true"] .entry + .entry {
+  border-top-color: #fff !important;
+}
+
+html[data-theme="dark"][data-chima-eink-mode="true"] .word-audio-btn:hover,
+html[data-theme="dark"][data-chima-eink-mode="true"] .anki-add-btn:hover,
+html[data-theme="dark"][data-chima-eink-mode="true"] .anki-open-btn:hover {
+  background: transparent !important;
 }

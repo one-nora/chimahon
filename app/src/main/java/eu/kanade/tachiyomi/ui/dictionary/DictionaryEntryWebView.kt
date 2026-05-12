@@ -131,6 +131,7 @@ fun DictionaryEntryWebView(
     }
     val wordAudioAutoplay by prefs.wordAudioAutoplay().collectAsState()
     val showNavigationButtons by prefs.showNavigationButtons().collectAsState()
+    val eInkMode by prefs.eInkMode().collectAsState()
 
     val renderSignature = remember(
         results,
@@ -183,14 +184,16 @@ fun DictionaryEntryWebView(
         )
         result
     }
-    val bootstrapHtml = remember(context, isDark, amoled, seedColor, colorScheme, fontFamily) {
+    val bootstrapHtml = remember(context, isDark, amoled, seedColor, colorScheme, fontFamily, eInkMode, activeProfile.languageCode) {
         getDictionaryBootstrapHtml(
             context = context,
             colorScheme = colorScheme,
             isDark = isDark,
             isAmoled = amoled,
             seedColor = seedColor,
-            fontFamily = fontFamily
+            fontFamily = fontFamily,
+            eInkMode = eInkMode,
+            languageCode = activeProfile.languageCode,
         )
     }
     
@@ -402,17 +405,19 @@ private class WordAudioBridge(
 internal fun prepareDictionaryWebViewShell(
     context: Context,
     webView: WebView = WebView(context),
-    bootstrapHtml: String = getDictionaryBootstrapHtml(context),
+    bootstrapHtml: String? = null,
     backgroundColor: Int = android.graphics.Color.TRANSPARENT,
+    languageCode: String = "",
 ): WebView {
+    val effectiveBootstrap = bootstrapHtml ?: getDictionaryBootstrapHtml(context, languageCode = languageCode)
     (webView.tag as? DictionaryWebViewState)?.let { state ->
-        if (state.bootstrapHtml != bootstrapHtml) {
-            state.reloadShell(webView, bootstrapHtml)
+        if (state.bootstrapHtml != effectiveBootstrap) {
+            state.reloadShell(webView, effectiveBootstrap)
         }
         return webView
     }
 
-    val state = DictionaryWebViewState(context, webViewProvider = { webView }, bootstrapHtml = bootstrapHtml)
+    val state = DictionaryWebViewState(context, webViewProvider = { webView }, bootstrapHtml = effectiveBootstrap)
     webView.apply {
         alpha = 0f
         setBackgroundColor(backgroundColor)
@@ -505,7 +510,7 @@ internal fun prepareDictionaryWebViewShell(
         }
 
         tag = state
-        state.reloadShell(this, bootstrapHtml)
+        state.reloadShell(this, effectiveBootstrap)
     }
     return webView
 }
@@ -878,6 +883,8 @@ internal fun getDictionaryBootstrapHtml(
     seedColor: Int? = null,
     isAmoled: Boolean = false,
     fontFamily: String = "",
+    eInkMode: Boolean = false,
+    languageCode: String = "",
 ): String {
     val css = dictionaryBaseCss.getOrPut(Unit) {
         readTextAsset(context.applicationContext, "dictionary/base.css")
@@ -953,11 +960,14 @@ internal fun getDictionaryBootstrapHtml(
         """
     } else ""
     
+    val eInkAttr = if (eInkMode) "true" else "false"
+
     val themeAttr = if (isDark == true) "dark" else "light"
+    val langAttr = if (languageCode.isNotEmpty()) """lang="$languageCode" """ else ""
 
     return """
         <!doctype html>
-        <html data-theme="$themeAttr">
+        <html $langAttr data-theme="$themeAttr" data-chima-eink-mode="$eInkAttr">
         <head>
           <meta charset="utf-8">
           <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">

@@ -35,6 +35,8 @@ class DictionaryPreferences(
     fun themeDarkAmoled() = preferenceStore.getBoolean("pref_dictionary_theme_dark_amoled", false)
     fun customColor() = preferenceStore.getInt("pref_dictionary_custom_color", 0)
 
+    fun eInkMode() = preferenceStore.getBoolean("pref_dictionary_eink_mode", false)
+
     fun customCss() = preferenceStore.getString("pref_dictionary_custom_css", "")
 
     // -------------------------------------------------------------------------
