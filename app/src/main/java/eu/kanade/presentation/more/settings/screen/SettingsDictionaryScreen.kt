@@ -539,6 +539,15 @@ object SettingsDictionaryScreen : SearchableSettings {
                     title = stringResource(KMR.strings.pref_dict_show_navigation_buttons),
                     subtitle = stringResource(KMR.strings.pref_dict_show_navigation_buttons_summary),
                 ),
+                Preference.PreferenceItem.ListPreference(
+                    preference = dictionaryPreferences.popupMode(),
+                    entries = persistentListOf(
+                        "floating" to "Floating",
+                        "full_width" to "Full-width",
+                        "full_height" to "Full-height",
+                    ).associate { it.first to it.second }.toPersistentMap(),
+                    title = "Popup mode",
+                ),
                 Preference.PreferenceItem.CustomPreference(
                     title = stringResource(MR.strings.pref_dict_custom_css),
                     content = {

@@ -125,6 +125,9 @@ fun OcrLookupPopup(
     val styles = currentFrame?.styles ?: emptyList()
     val mediaDataUris = currentFrame?.mediaDataUris ?: emptyMap()
     val existingExpressions = currentFrame?.existingExpressions ?: emptySet()
+    val matchedCharCount = remember(results) {
+        results.firstOrNull()?.matched?.let { it.codePointCount(0, it.length) } ?: 0
+    }
     var contentReady by remember { mutableStateOf(false) }
     var hasRenderedContent by remember { mutableStateOf(false) }
     var lookupGeneration by remember { mutableIntStateOf(0) }
@@ -144,6 +147,7 @@ fun OcrLookupPopup(
     val dictionaryPreferences = remember { Injekt.get<DictionaryPreferences>() }
     val popupWidthPref by dictionaryPreferences.popupWidth().collectAsState()
     val popupHeightPref by dictionaryPreferences.popupHeight().collectAsState()
+    val popupModePref by dictionaryPreferences.popupMode().collectAsState()
     val popupFontSizePref by dictionaryPreferences.fontSize().collectAsState()
 
     val ankiEnabled = activeProfile.ankiEnabled
@@ -457,85 +461,105 @@ fun OcrLookupPopup(
         null
     }
 
-    // === Popup Positioning: evaluate all 4 sides, pick the best ===
+    // === Popup Positioning: priority-based 4-direction ===
     data class PopupLayoutResult(val x: Float, val y: Float, val widthPx: Float, val heightPx: Float)
 
     val layoutResult = remember(
         anchorX, anchorY, anchorWidth, anchorHeight,
-        screenWidthPx, screenHeightPx, popupWidthPx, popupHeightPx, isVertical,
+        screenWidthPx, screenHeightPx, popupWidthPx, popupHeightPx, isVertical, popupModePref, matchedCharCount,
     ) {
-        val w = minOf(popupWidthPx, screenWidthPx - paddingPx * 2)
-        val h = minOf(popupHeightPx, screenHeightPx - paddingPx * 2)
+        val w: Float
+        val h: Float
+        val bestX: Float
+        val bestY: Float
 
-        val ax = anchorX
-        val ay = anchorY
-        val aw = anchorWidth
-        val ah = anchorHeight
-        val acx = ax + aw / 2f
-        val acy = ay + ah / 2f
-
-        // Candidate positions (top-left of popup) for each side
-        // format: [x, y, isVerticalSide]
-        val candidates = arrayOf(
-            floatArrayOf(ax + aw + gapPx, acy - h / 2f, 1f), // Right
-            floatArrayOf(ax - w - gapPx, acy - h / 2f, 1f), // Left
-            floatArrayOf(acx - w / 2f, ay + ah + gapPx, 0f), // Below
-            floatArrayOf(acx - w / 2f, ay - h - gapPx, 0f), // Above
-        )
-
-        fun overlapArea(px: Float, py: Float): Float {
-            if (aw <= 0f || ah <= 0f) return 0f
-            val ox = minOf(px + w, ax + aw) - maxOf(px, ax)
-            val oy = minOf(py + h, ay + ah) - maxOf(py, ay)
-            return if (ox > 0f && oy > 0f) ox * oy else 0f
-        }
-
-        var bestScore = Float.MAX_VALUE
-        var bestX = paddingPx
-        var bestY = paddingPx
-
-        for (i in candidates.indices) {
-            val c = candidates[i]
-            val rawX = c[0]
-            val rawY = c[1]
-
-            // Clamp to screen boundaries with padding
-            val clampedX = rawX.coerceIn(paddingPx, screenWidthPx - w - paddingPx)
-            val clampedY = rawY.coerceIn(paddingPx, screenHeightPx - h - paddingPx)
-
-            val area = overlapArea(clampedX, clampedY)
-
-            // Penalties:
-            // 1. Overlap is the primary penalty (Area weighted heavily)
-            val overlapPenalty = area * 15f
-
-            // 2. Clamping penalty (how much we had to shift the popup)
-            val shiftX = Math.abs(clampedX - rawX)
-            val shiftY = Math.abs(clampedY - rawY)
-            val clampingPenalty = (shiftX + shiftY) * 2f
-
-            // 3. Axis & Side preference
-            // Candidates: 0=Right, 1=Left, 2=Below, 3=Above
-            val sideBias = if (isVertical) {
-                when (i) {
-                    0, 3 -> -1500f // Right or Above (Already read area for vertical)
-                    1, 2 -> -1200f // Left or Below
-                    else -> 0f
+        when (popupModePref) {
+            "full_width" -> {
+                w = screenWidthPx - paddingPx * 2
+                h = minOf(popupHeightPx, screenHeightPx - paddingPx * 2)
+                bestX = paddingPx
+                val expH = if (isVertical) anchorHeight * maxOf(1, matchedCharCount) else anchorHeight
+                val bottomY = (screenHeightPx - h - paddingPx).coerceAtLeast(paddingPx)
+                val overlapsWord = anchorWidth > 0f && anchorHeight > 0f &&
+                    bottomY < anchorY + expH && bottomY + h > anchorY
+                bestY = if (overlapsWord) {
+                    (anchorY - h - gapPx).coerceIn(paddingPx, screenHeightPx - h - paddingPx)
+                } else {
+                    bottomY
                 }
+            }
+            "full_height" -> {
+                w = minOf(popupWidthPx, screenWidthPx * 0.5f, screenWidthPx - paddingPx * 2)
+                h = screenHeightPx - paddingPx * 2
+                val acx = anchorX + anchorWidth / 2f
+                bestY = paddingPx
+                bestX = if (acx < screenWidthPx / 2f) {
+                    (screenWidthPx - w - paddingPx).coerceAtLeast(paddingPx)
+                } else {
+                    paddingPx
+                }
+            }
+            else -> {
+            w = minOf(popupWidthPx, screenWidthPx - paddingPx * 2)
+            h = minOf(popupHeightPx, screenHeightPx - paddingPx * 2)
+
+            val ax = anchorX
+            val ay = anchorY
+            val aw = anchorWidth
+            val ah = anchorHeight
+            val acx = ax + aw / 2f
+            val acy = ay + ah / 2f
+
+            // Expand anchor to cover the full matched term, not just first character
+            val expW = if (isVertical) aw else aw * maxOf(1, matchedCharCount)
+            val expH = if (isVertical) ah * maxOf(1, matchedCharCount) else ah
+
+            // 4 candidate positions (top-left corner of popup)
+            data class Pos(val x: Float, val y: Float)
+
+            val right  = Pos(ax + expW + gapPx, acy - h / 2f) // Right of full term
+            val left   = Pos(ax - w - gapPx, acy - h / 2f) // Left of anchor
+            val below  = Pos(acx - w / 2f, ay + expH + gapPx) // Below full term
+            val above  = Pos(acx - w / 2f, ay - h - gapPx) // Above anchor
+
+            val all = listOf(right, left, below, above)
+
+            // Priority order: 0=Right, 1=Left, 2=Below, 3=Above
+            val order = if (isVertical) {
+                if (acx < screenWidthPx / 2f) listOf(0, 1, 2, 3) else listOf(1, 0, 2, 3)
             } else {
-                when (i) {
-                    1, 3 -> -1500f // Left or Above (Already read area for horizontal)
-                    0, 2 -> -1200f // Right or Below
-                    else -> 0f
+                if (acy < screenHeightPx / 2f) listOf(2, 3, 0, 1) else listOf(3, 2, 0, 1)
+            }
+
+            var bx = paddingPx
+            var by = paddingPx
+            var found = false
+
+            for (idx in order) {
+                val p = all[idx]
+                val cx = p.x.coerceIn(paddingPx, screenWidthPx - w - paddingPx)
+                val cy = p.y.coerceIn(paddingPx, screenHeightPx - h - paddingPx)
+
+                val overlaps = aw > 0f && ah > 0f &&
+                    cx < ax + expW && cx + w > ax &&
+                    cy < ay + expH && cy + h > ay
+
+                if (!overlaps) {
+                    bx = cx
+                    by = cy
+                    found = true
+                    break
                 }
             }
 
-            val score = overlapPenalty + clampingPenalty + sideBias
-
-            if (score < bestScore) {
-                bestScore = score
-                bestX = clampedX
-                bestY = clampedY
+            if (!found) {
+                val pref = all[order[0]]
+                bestX = pref.x.coerceIn(paddingPx, screenWidthPx - w - paddingPx)
+                bestY = pref.y.coerceIn(paddingPx, screenHeightPx - h - paddingPx)
+            } else {
+                bestX = bx
+                bestY = by
+            }
             }
         }
 
