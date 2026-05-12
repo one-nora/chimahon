@@ -48,7 +48,7 @@ open class Pager(
             return true
         }
 
-        override fun onSingleTapUp(ev: MotionEvent): Boolean {
+        override fun onSingleTapConfirmed(ev: MotionEvent): Boolean {
             tapListener?.invoke(ev)
             return true
         }
