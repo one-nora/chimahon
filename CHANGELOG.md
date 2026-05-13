@@ -22,6 +22,26 @@ The format follows a Keep a Changelog style and uses Semantic Versioning.
 - Dictionary profile overrides in the Novel Reader.
 
 
+## [v1.7.2]
+
+### Added
+- Statistics screen for novel/manga reading stats.
+- Pitch accent deduplication option.
+
+### Changed
+- Make dictionary list draggable by a handle.
+- System bar handling in Novel UI.
+- Updated hoshidicts native library.
+
+### Fixed
+- Fix: horizontal paged reader behaviour.
+- Revert OCR merge value regressions.
+- Novel sync and language detection during import.
+- Cascade fallback dictionaries in custom collapse mode.
+- Korean deinflector text assembly bug.
+
+
+
 ## [v1.7.0]
 
 ### Added
