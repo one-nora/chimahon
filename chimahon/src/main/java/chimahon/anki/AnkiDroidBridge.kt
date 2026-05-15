@@ -318,6 +318,20 @@ class AnkiDroidBridge(private val context: Context) {
             saveMediaBytes(filename, file.readBytes())
         }
 
+    fun triggerSync() {
+        try {
+            Log.d(TAG, "triggerSync: requesting AnkiDroid sync")
+            val intent = Intent("com.ichi2.anki.DO_SYNC").apply {
+                setPackage("com.ichi2.anki")
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+            context.startActivity(intent)
+            Log.d(TAG, "triggerSync: intent sent successfully")
+        } catch (e: Exception) {
+            Log.w(TAG, "triggerSync: failed", e)
+        }
+    }
+
     // ==========================================================================
     // Internal helpers
     // ==========================================================================

@@ -189,6 +189,7 @@ data object DictionaryTab : Tab {
         val ankiDupScope = activeProfile.ankiDupScope
         val ankiDupAction = activeProfile.ankiDupAction
         val ankiTags = activeProfile.ankiTags
+        val ankiSyncOnCreate = activeProfile.ankiSyncOnCreate
 
         val showFreqHarmonic by dictionaryPreferences.showFrequencyHarmonic().collectAsState()
         val showPitchDiagram by dictionaryPreferences.showPitchDiagram().collectAsState()
@@ -340,6 +341,7 @@ data object DictionaryTab : Tab {
                             styles = styles,
                             forceOpen = forceOpen,
                             type = "novel",
+                            syncOnCreate = ankiSyncOnCreate,
                         )
                         if (ankiResult is AnkiResult.Success || ankiResult is AnkiResult.CardExists || ankiResult is AnkiResult.OpenCard) {
                             val frame = lookupStack.getOrNull(frameIndex)

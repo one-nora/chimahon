@@ -1753,6 +1753,22 @@ object SettingsDictionaryScreen : SearchableSettings {
                                     }
                                 }
                             }
+
+                            // Sync on create
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    text = "Sync on card create",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                )
+                                Switch(
+                                    checked = activeProfile.ankiSyncOnCreate,
+                                    onCheckedChange = { updateProfile { copy(ankiSyncOnCreate = it) } },
+                                )
+                            }
                         }
                     },
                 ),

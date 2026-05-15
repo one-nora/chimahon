@@ -217,6 +217,7 @@ object AnkiCardCreator {
         styles: List<DictionaryStyle> = emptyList(),
         forceOpen: Boolean = false,
         type: String? = null,
+        syncOnCreate: Boolean = false,
     ): AnkiResult {
         android.util.Log.d(TAG, "addToAnki: deck=$deck, model=$model, forceOpen=$forceOpen, glossaryIndex=$glossaryIndex")
 
@@ -320,6 +321,7 @@ object AnkiCardCreator {
                         "overwrite" -> {
                             bridge.updateNoteFields(existing.first(), fields)
                             com.canopus.chimareader.data.AnkiStatsStorage.addCard(context, type)
+                            if (syncOnCreate) bridge.triggerSync()
                             return AnkiResult.Success(existing.first())
                         }
                     }
@@ -328,6 +330,7 @@ object AnkiCardCreator {
 
             val noteId = bridge.addNote(deckName = deck, modelName = model, fields = fields, tags = tagList)
             com.canopus.chimareader.data.AnkiStatsStorage.addCard(context, type)
+            if (syncOnCreate) bridge.triggerSync()
             AnkiResult.Success(noteId)
         } catch (e: SecurityException) {
             AnkiResult.PermissionDenied

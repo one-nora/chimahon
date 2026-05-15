@@ -156,6 +156,7 @@ fun OcrLookupPopup(
     val ankiDupAction = activeProfile.ankiDupAction
     val ankiTags = activeProfile.ankiTags
     val cropMode = activeProfile.ankiCropMode
+    val ankiSyncOnCreate = activeProfile.ankiSyncOnCreate
 
     val showFreqHarmonic by dictionaryPreferences.showFrequencyHarmonic().collectAsState()
     val groupTerms by dictionaryPreferences.groupTerms().collectAsState()
@@ -387,6 +388,7 @@ fun OcrLookupPopup(
                     styles = styles,
                     forceOpen = forceOpen,
                     type = type,
+                    syncOnCreate = ankiSyncOnCreate,
                 )
                 if (ankiResult is AnkiResult.Success || ankiResult is AnkiResult.CardExists || ankiResult is AnkiResult.OpenCard) {
                     withContext(kotlinx.coroutines.Dispatchers.Main) {
@@ -433,6 +435,7 @@ fun OcrLookupPopup(
                     styles = styles,
                     forceOpen = forceOpen,
                     type = type,
+                    syncOnCreate = ankiSyncOnCreate,
                 )
                 withContext(kotlinx.coroutines.Dispatchers.Main) {
                     when (ankiResult) {
