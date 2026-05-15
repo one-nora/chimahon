@@ -11,6 +11,7 @@ import com.canopus.chimareader.data.BookStorage
 import com.canopus.chimareader.data.NovelCategory
 import com.canopus.chimareader.data.NovelCategoryStorage
 import android.net.Uri
+import eu.kanade.presentation.library.components.LibraryToolbarTitle
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toImmutableList
@@ -193,6 +194,7 @@ class NovelLibraryScreenModel(
         data object SortFilter : Dialog
         data object Settings : Dialog
         data class EditBook(val book: BookMetadata) : Dialog
+        data object SetDefaultCategory : Dialog
     }
 
     @Immutable
@@ -211,9 +213,15 @@ class NovelLibraryScreenModel(
         val hasActiveFilters: Boolean = false
         val isLibraryEmpty: Boolean = books.isEmpty()
         val selectionMode: Boolean = selection.isNotEmpty()
+
+        val displayedCategories: List<NovelCategory>
+            get() = categories.filterNot { it.isSystemCategory && getBooksForCategory(it).isEmpty() }
+
+        val coercedActiveCategoryIndex: Int
+            get() = activeCategoryIndex.coerceIn(0, (displayedCategories.size - 1).coerceAtLeast(0))
         
         val activeCategory: NovelCategory?
-            get() = categories.getOrNull(activeCategoryIndex)
+            get() = displayedCategories.getOrNull(coercedActiveCategoryIndex)
 
         fun getBooksForCategory(category: NovelCategory): List<BookMetadata> {
             val filteredBooks = if (searchQuery.isNullOrBlank()) {
@@ -241,6 +249,27 @@ class NovelLibraryScreenModel(
 
         fun getItemCountForCategory(category: NovelCategory): Int {
             return getBooksForCategory(category).size
+        }
+
+        fun getToolbarTitle(
+            defaultTitle: String,
+            defaultCategoryTitle: String,
+            showTabs: Boolean,
+            showCount: Boolean,
+        ): LibraryToolbarTitle {
+            val category = activeCategory
+            val categoryName = when {
+                category == null -> defaultTitle
+                category.isSystemCategory -> defaultCategoryTitle
+                else -> category.name
+            }
+            val title = if (showTabs) defaultTitle else categoryName
+            val count = when {
+                !showCount -> null
+                !showTabs && category != null -> getItemCountForCategory(category)
+                else -> books.size
+            }
+            return LibraryToolbarTitle(title, count)
         }
     }
     
@@ -271,4 +300,22 @@ class NovelLibraryScreenModel(
     fun showTabs() = libraryPreferences.categoryTabs()
 
     fun showNumberOfItems() = libraryPreferences.categoryNumberOfItems()
+
+    fun showNovelDefaultCategoryDialog() {
+        mutableState.update { it.copy(dialog = Dialog.SetDefaultCategory) }
+    }
+
+    fun setNovelDefaultCategory(categoryId: String) {
+        libraryPreferences.novelDefaultCategory().set(categoryId)
+        closeDialog()
+    }
+
+    fun getNovelDefaultCategory() = libraryPreferences.novelDefaultCategory()
+
+    fun getDefaultCategoryDisplayName(): String {
+        val defaultId = libraryPreferences.novelDefaultCategory().get()
+        if (defaultId.isEmpty()) return "None"
+        val cat = mutableState.value.categories.find { it.id == defaultId }
+        return cat?.name ?: "None"
+    }
 }

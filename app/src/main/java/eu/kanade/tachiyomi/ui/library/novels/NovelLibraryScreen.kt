@@ -29,10 +29,8 @@ import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.RestartAlt
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
@@ -77,6 +75,9 @@ import eu.kanade.tachiyomi.ui.category.NovelCategoryScreen
 import eu.kanade.tachiyomi.ui.home.HomeScreen
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toImmutableList
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import tachiyomi.domain.library.model.LibraryDisplayMode
 import tachiyomi.i18n.MR
@@ -86,6 +87,7 @@ import tachiyomi.presentation.core.components.FastScrollLazyVerticalGrid
 import tachiyomi.presentation.core.components.HeadingItem
 import tachiyomi.presentation.core.components.SettingsChipRow
 import tachiyomi.presentation.core.components.SliderItem
+import tachiyomi.presentation.core.components.SortItem
 import tachiyomi.presentation.core.components.material.Scaffold
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.screens.EmptyScreen
@@ -97,13 +99,21 @@ import androidx.compose.material3.TextField
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun Screen.NovelLibraryScreen() {
+fun Screen.NovelLibraryScreen(
+    requestSortEvent: Channel<Unit>? = null,
+) {
     val navigator = LocalNavigator.currentOrThrow
     val screenModel = rememberScreenModel { NovelLibraryScreenModel() }
     val state: NovelLibraryScreenModel.State by screenModel.state.collectAsState()
 
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
+
+    LaunchedEffect(Unit) {
+        requestSortEvent?.receiveAsFlow()?.collectLatest {
+            screenModel.showSortDialog()
+        }
+    }
 
     val epubPicker = androidx.activity.compose.rememberLauncherForActivityResult(
         contract = androidx.activity.result.contract.ActivityResultContracts.GetContent(),
@@ -121,18 +131,19 @@ fun Screen.NovelLibraryScreen() {
         }
     }
 
+    val showTabs by screenModel.showTabs().collectAsState()
+    val showNumberOfItems by screenModel.showNumberOfItems().collectAsState()
+
     Scaffold(
         topBar = { scrollBehavior ->
             LibraryToolbar(
                 hasActiveFilters = state.hasActiveFilters,
                 selectedCount = state.selection.size,
-                title = LibraryToolbarTitle(
-                    text = stringResource(MR.strings.label_novels),
-                    numberOfManga = if (state.activeCategory != null) {
-                        state.getItemCountForCategory(state.activeCategory!!)
-                    } else {
-                        null
-                    },
+                title = state.getToolbarTitle(
+                    defaultTitle = stringResource(MR.strings.label_novels),
+                    defaultCategoryTitle = stringResource(MR.strings.label_default),
+                    showTabs = showTabs,
+                    showCount = showNumberOfItems,
                 ),
                 onClickUnselectAll = screenModel::clearSelection,
                 onClickSelectAll = screenModel::selectAll,
@@ -157,6 +168,8 @@ fun Screen.NovelLibraryScreen() {
                 onClickEditCategories = { navigator.push(NovelCategoryScreen()) },
                 editCategoriesTitle = stringResource(MR.strings.action_edit_novel_categories),
                 updateCategoryTitle = stringResource(SYMR.strings.label_sync),
+                onClickNovelDefaultCategory = screenModel::showNovelDefaultCategoryDialog,
+                novelDefaultCategoryTitle = stringResource(MR.strings.default_category) + ": " + screenModel.getDefaultCategoryDisplayName(),
             )
         },
         bottomBar = {
@@ -444,48 +457,21 @@ fun Screen.NovelLibraryScreen() {
                 ) {
                     when (page) {
                         0 -> { // Sort Tab
-                            NovelLibraryScreenModel.SortMode.entries.forEach { mode ->
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable { screenModel.setSort(mode, state.sortDescending) }
-                                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    RadioButton(
-                                        selected = state.sortMode == mode,
-                                        onClick = { screenModel.setSort(mode, state.sortDescending) },
-                                    )
-                                    Text(
-                                        text = when (mode) {
-                                            NovelLibraryScreenModel.SortMode.Alphabetical ->
-                                                stringResource(MR.strings.action_sort_alpha)
-                                            NovelLibraryScreenModel.SortMode.DateAdded ->
-                                                stringResource(MR.strings.action_sort_date_added)
-                                            NovelLibraryScreenModel.SortMode.LastRead ->
-                                                stringResource(MR.strings.action_sort_last_read)
-                                        },
-                                        modifier = Modifier.padding(start = 12.dp),
-                                    )
-                                }
-                            }
+                            val options = listOf(
+                                MR.strings.action_sort_alpha to NovelLibraryScreenModel.SortMode.Alphabetical,
+                                MR.strings.action_sort_date_added to NovelLibraryScreenModel.SortMode.DateAdded,
+                                MR.strings.action_sort_last_read to NovelLibraryScreenModel.SortMode.LastRead,
+                            )
 
-                            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { screenModel.setSort(state.sortMode, !state.sortDescending) }
-                                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Checkbox(
-                                    checked = state.sortDescending,
-                                    onCheckedChange = { screenModel.setSort(state.sortMode, it) },
-                                )
-                                Text(
-                                    text = stringResource(MR.strings.action_desc),
-                                    modifier = Modifier.padding(start = 12.dp),
+                            options.map { (titleRes, mode) ->
+                                SortItem(
+                                    label = stringResource(titleRes),
+                                    sortDescending = if (state.sortMode == mode) state.sortDescending else null,
+                                    onClick = {
+                                        val isTogglingDirection = state.sortMode == mode
+                                        val newDescending = if (isTogglingDirection) !state.sortDescending else state.sortDescending
+                                        screenModel.setSort(mode, newDescending)
+                                    },
                                 )
                             }
                         }
@@ -535,6 +521,57 @@ fun Screen.NovelLibraryScreen() {
             }
         }
 
+        is NovelLibraryScreenModel.Dialog.SetDefaultCategory -> {
+            val currentDefault = remember { screenModel.getNovelDefaultCategory().get() }
+            AlertDialog(
+                onDismissRequest = onDismissRequest,
+                title = { Text(stringResource(MR.strings.default_category)) },
+                text = {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { screenModel.setNovelDefaultCategory("") }
+                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RadioButton(
+                                selected = currentDefault.isEmpty(),
+                                onClick = { screenModel.setNovelDefaultCategory("") },
+                            )
+                            Text(
+                                text = stringResource(MR.strings.default_category_summary),
+                                modifier = Modifier.padding(start = 12.dp),
+                            )
+                        }
+                        state.categories.forEach { cat ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { screenModel.setNovelDefaultCategory(cat.id) }
+                                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                RadioButton(
+                                    selected = currentDefault == cat.id,
+                                    onClick = { screenModel.setNovelDefaultCategory(cat.id) },
+                                )
+                                Text(
+                                    text = if (cat.isSystemCategory) stringResource(MR.strings.label_default) else cat.name,
+                                    modifier = Modifier.padding(start = 12.dp),
+                                )
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = onDismissRequest) {
+                        Text(stringResource(MR.strings.action_close))
+                    }
+                },
+            )
+        }
+
         null -> {}
     }
 }
@@ -549,7 +586,7 @@ fun NovelLibraryContent(
     onCategoryChange: (Int) -> Unit,
     onClickBook: (BookMetadata) -> Unit,
 ) {
-    val pagerState = rememberPagerState(state.activeCategoryIndex) { state.categories.size }
+    val pagerState = rememberPagerState(state.coercedActiveCategoryIndex) { state.displayedCategories.size }
     val scope = rememberCoroutineScope()
 
     val configuration = LocalConfiguration.current
@@ -561,9 +598,9 @@ fun NovelLibraryContent(
     val showNumberOfItems by screenModel.showNumberOfItems().collectAsState()
 
     Column(modifier = Modifier.padding(top = contentPadding.calculateTopPadding())) {
-        if (showTabs && state.categories.size >= 1) {
+        if (showTabs && state.displayedCategories.size >= 1) {
             LibraryTabs(
-                categories = state.categories.map {
+                categories = state.displayedCategories.map {
                     val name = if (it.isSystemCategory) {
                         stringResource(MR.strings.label_default)
                     } else {
@@ -580,7 +617,7 @@ fun NovelLibraryContent(
                 pagerState = pagerState,
                 getItemCountForCategory = { cat ->
                     if (showNumberOfItems) {
-                        state.categories.find { it.name == cat.name }?.let { state.getItemCountForCategory(it) }
+                        state.displayedCategories.find { it.name == cat.name }?.let { state.getItemCountForCategory(it) }
                     } else {
                         null
                     }
@@ -596,7 +633,7 @@ fun NovelLibraryContent(
             modifier = Modifier.weight(1f),
             verticalAlignment = Alignment.Top,
         ) { page ->
-            val category = state.categories[page]
+            val category = state.displayedCategories[page]
             val books = state.getBooksForCategory(category)
 
             FastScrollLazyVerticalGrid(

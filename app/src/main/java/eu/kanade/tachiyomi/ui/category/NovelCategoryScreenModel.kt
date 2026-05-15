@@ -1,8 +1,10 @@
 package eu.kanade.tachiyomi.ui.category
 
+import android.app.Application
 import androidx.compose.runtime.Immutable
 import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
+import com.canopus.chimareader.data.BookStorage
 import com.canopus.chimareader.data.NovelCategory
 import com.canopus.chimareader.data.NovelCategoryStorage
 import dev.icerock.moko.resources.StringResource
@@ -17,6 +19,7 @@ import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
 class NovelCategoryScreenModel(
+    private val app: Application = Injekt.get(),
     private val categoryStorage: NovelCategoryStorage = Injekt.get(),
 ) : StateScreenModel<NovelCategoryScreenState>(NovelCategoryScreenState.Loading) {
 
@@ -32,7 +35,9 @@ class NovelCategoryScreenModel(
             val categories = categoryStorage.loadAllCategories()
             mutableState.update {
                 NovelCategoryScreenState.Success(
-                    categories = categories.toImmutableList(),
+                    categories = categories
+                        .filterNot(NovelCategory::isSystemCategory)
+                        .toImmutableList(),
                 )
             }
         }
@@ -48,6 +53,13 @@ class NovelCategoryScreenModel(
     fun deleteCategory(category: NovelCategory) {
         if (category.isSystemCategory) return
         screenModelScope.launch {
+            // Transfer books to default category before deleting
+            val allBooks = BookStorage.loadAllBooks(app)
+            allBooks.filter { it.categoryIds.contains(category.id) }.forEach { book ->
+                val bookDir = BookStorage.getBookDirectory(app, book.id)
+                val updatedCategories = (book.categoryIds - category.id + NovelCategory.UNCATEGORIZED_ID).distinct()
+                BookStorage.saveMetadata(book.copy(categoryIds = updatedCategories), bookDir)
+            }
             categoryStorage.deleteCategory(category.id)
             loadCategories()
         }

@@ -166,6 +166,8 @@ class LibraryPreferences(
 
     fun defaultCategory() = preferenceStore.getInt(DEFAULT_CATEGORY_PREF_KEY, -1)
 
+    fun novelDefaultCategory() = preferenceStore.getString(NOVEL_DEFAULT_CATEGORY_PREF_KEY, "")
+
     fun lastUsedCategory() = preferenceStore.getInt(Preference.appStateKey("last_used_category"), 0)
 
     fun categoryTabs() = preferenceStore.getBoolean("display_category_tabs", true)
@@ -286,6 +288,7 @@ class LibraryPreferences(
         const val MARK_DUPLICATE_CHAPTER_READ_EXISTING = "existing"
 
         const val DEFAULT_CATEGORY_PREF_KEY = "default_category"
+        const val NOVEL_DEFAULT_CATEGORY_PREF_KEY = "novel_default_category"
         private const val LIBRARY_UPDATE_CATEGORIES_PREF_KEY = "library_update_categories"
         private const val LIBRARY_UPDATE_CATEGORIES_EXCLUDE_PREF_KEY = "library_update_categories_exclude"
 
