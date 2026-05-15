@@ -637,14 +637,18 @@ object AnkiCardCreator {
         Marker.POPUP_SELECTION_TEXT -> popupSelection?.let { escapeHtmlWithLineBreaks(it) } ?: ""
         Marker.SELECTED_GLOSSARY -> {
             val selected = selectedDict?.takeIf { it.isNotBlank() }
-            buildGlossary(
-                result.term.glossaries,
-                brief = false,
-                noDictTag = false,
-                firstOnly = selected == null,
-                dictionaryFilter = selected,
-                styles = styles,
-            )
+            if (selected != null) {
+                buildGlossary(
+                    result.term.glossaries,
+                    brief = false,
+                    noDictTag = false,
+                    firstOnly = false,
+                    dictionaryFilter = selected,
+                    styles = styles,
+                )
+            } else {
+                renderMarker(Marker.GLOSSARY_FIRST, result, glossaryIndex = glossaryIndex, styles = styles)
+            }
         }
         Marker.DOCUMENT_TITLE -> media?.mangaTitle?.let { escapeHtml(it) } ?: ""
         else -> parseSingleGlossaryMarker(marker, result, styles)
@@ -1426,14 +1430,14 @@ object AnkiCardCreator {
                 val sb = StringBuilder()
                 sb.append("<div class=\"pitch-accent-composite\" style=\"display: flex; align-items: center; gap: 0.5em; flex-wrap: wrap;\">")
 
-                // 1. Number [0]
-                sb.append("<span class=\"pitch-number\" style=\"font-weight: bold;\">[$position]</span>")
-
-                // 2. SVG (Graph)
+                // 1. SVG (Graph)
                 sb.append(createPitchSvg(morae, position))
 
-                // 3. Overline Text
+                // 2. Overline Text
                 sb.append(renderOverlineText(morae, position))
+
+                // 3. Number [0]
+                sb.append("<span class=\"pitch-number\" style=\"font-weight: bold;\">[$position]</span>")
 
                 sb.append("</div>")
                 "$prefix$sb"

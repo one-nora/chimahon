@@ -919,11 +919,12 @@ private class ReaderAndroidWebView(
                 wrapper.style.setProperty('-webkit-box-decoration-break', 'clone', 'important');
                 wrapper.style.setProperty('box-decoration-break', 'clone', 'important');
                 b.style.setProperty('padding', '0', 'important');
+                b.style.setProperty('margin', '0', 'important');
 
                 wrapper.style.setProperty('font-size', '${readerSettings.fontSize}px', 'important');
+                wrapper.style.setProperty('line-height', '${readerSettings.lineHeight}', 'important');
                 ${paragraphSpacingJS(readerSettings)}
                 ${if (readerSettings.layoutAdvanced) """
-                wrapper.style.setProperty('line-height', '${readerSettings.lineHeight}', 'important');
                 wrapper.style.setProperty('letter-spacing', '${readerSettings.characterSpacing}em', 'important');
                 """ else ""}
                 wrapper.style.setProperty('text-align', ${if (readerSettings.justifyText) "'justify'" else "'left'"}, 'important');

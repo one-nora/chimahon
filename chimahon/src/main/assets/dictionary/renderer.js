@@ -2080,29 +2080,27 @@
         const row = document.createElement('div');
         row.style.cssText = 'display:flex;align-items:center;gap:0.5em;flex-wrap:wrap';
 
-        // [N] downstep notation — always emitted for CSS parity; showNumber
-        // controls whether we also emit the legacy .pitch-number span.
-        const downstepSpan = createDownstepNotation(pos);
-        // Mirror Yomitan: place downstep notation inside a container div
-        const downstepContainer = document.createElement('span');
-        downstepContainer.className = 'pronunciation-downstep-notation-container';
-        downstepContainer.appendChild(downstepSpan);
-        row.appendChild(downstepContainer);
-
-        // Legacy numeric badge (shown when showNumber is true)
-        if (showNumber) {
-          const num = document.createElement('span');
-          num.className = 'pitch-number';
-          num.textContent = `[${pos}]`;
-          row.appendChild(num);
-        }
-
         if (showDiagram && morae.length > 0) {
           row.appendChild(createPitchDiagram(morae, pos));
         }
 
         if (showText && morae.length > 0) {
           row.appendChild(createPitchTextLine(morae, pos, nasalPos, devoicePos));
+        }
+
+        // Number notation(s) after kana — [N] downstep notation always emitted
+        // for CSS parity; showNumber controls legacy .pitch-number span.
+        const downstepSpan = createDownstepNotation(pos);
+        const downstepContainer = document.createElement('span');
+        downstepContainer.className = 'pronunciation-downstep-notation-container';
+        downstepContainer.appendChild(downstepSpan);
+        row.appendChild(downstepContainer);
+
+        if (showNumber) {
+          const num = document.createElement('span');
+          num.className = 'pitch-number';
+          num.textContent = `[${pos}]`;
+          row.appendChild(num);
         }
 
         groupContainer.appendChild(row);

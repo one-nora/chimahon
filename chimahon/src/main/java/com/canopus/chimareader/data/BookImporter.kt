@@ -292,7 +292,10 @@ val metadata = BookMetadata(
             // overflow / overflow-x / overflow-y
             text = text.replace(Regex("""(?i)[ \t]*overflow(?:-[xy])?\s*:[^;]+;[ \t]*\n?"""), "")
 
-            text = stripBodyHtmlLayoutProps(text)
+            // Remove entire rules targeting html/body selectors
+            text = removeHtmlBodyRules(text)
+            // Strip line-height and text-indent from all remaining rules
+            text = stripLineHeightAndTextIndent(text)
 
             file.writeText(text, Charsets.UTF_8)
             Log.d(TAG, "cleanCss: cleaned ${file.name}")
@@ -301,7 +304,7 @@ val metadata = BookMetadata(
         }
     }
 
-    private fun stripBodyHtmlLayoutProps(css: String): String {
+    private fun removeHtmlBodyRules(css: String): String {
         // Matches a CSS selector + single-level { declarations } block.
         // Leading '@' guard prevents mismatching inside @media bodies.
         val blockRe = Regex("""([^{}@]+)\{([^{}]*)\}""")
@@ -312,22 +315,18 @@ val metadata = BookMetadata(
             RegexOption.IGNORE_CASE,
         )
 
-        // Layout properties the reader injection overrides on html/body.
-        // Written as a single raw triple-quoted string to avoid escaping issues.
-        val layoutPropRe = Regex(
-            """(?i)[ \t]*(margin(?:-(?:top|right|bottom|left))?|padding(?:-(?:top|right|bottom|left))?|font-size|line-height|letter-spacing|text-align|background(?:-color)?|(?:min-|max-)?height|(?:min-|max-)?width)\s*:[^;]+;[ \t]*\n?""",
-        )
-
         return blockRe.replace(css) { match ->
             val selector = match.groupValues[1]
-            val declarations = match.groupValues[2]
-            if (!targetSelectorRe.containsMatchIn(selector)) {
-                match.value // not targeting html/body — leave unchanged
+            if (targetSelectorRe.containsMatchIn(selector)) {
+                "" // remove entire rule
             } else {
-                val cleaned = layoutPropRe.replace(declarations, "")
-                "$selector{$cleaned}"
+                match.value // leave unchanged
             }
         }
+    }
+
+    private fun stripLineHeightAndTextIndent(css: String): String {
+        return css.replace(Regex("""(?i)[ \t]*(line-height|text-indent)\s*:[^;]+;[ \t]*\n?"""), "")
     }
 
     private fun md5Hex(file: File): String {
