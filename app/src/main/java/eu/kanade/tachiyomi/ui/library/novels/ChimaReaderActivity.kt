@@ -1,6 +1,8 @@
 package eu.kanade.tachiyomi.ui.library.novels
 
 import android.os.Bundle
+import android.os.SystemClock
+import android.util.Log
 import com.canopus.chimareader.data.BookStorage
 import android.view.ViewGroup
 import android.webkit.WebView
@@ -133,31 +135,41 @@ class ChimaReaderActivity : NovelReaderActivity() {
 
     override fun getSelectionRectsCallback(): ((String) -> Unit) = { json ->
         runOnUiThread {
-            selectionRects.clear()
+            pendingLookupRects.clear()
+            var minX = Double.MAX_VALUE
+            var minY = Double.MAX_VALUE
+            var maxR = Double.MIN_VALUE
+            var maxB = Double.MIN_VALUE
             try {
                 val arr = JSONArray(json)
                 for (i in 0 until arr.length()) {
                     val obj = arr.getJSONObject(i)
-                    selectionRects.add(
-                        SelectionRect(
-                            x = obj.getDouble("x").toFloat(),
-                            y = obj.getDouble("y").toFloat(),
-                            width = obj.getDouble("width").toFloat(),
-                            height = obj.getDouble("height").toFloat(),
-                        )
-                    )
+                    val x = obj.getDouble("x")
+                    val y = obj.getDouble("y")
+                    val w = obj.getDouble("width")
+                    val h = obj.getDouble("height")
+                    pendingLookupRects.add(SelectionRect(x.toFloat(), y.toFloat(), w.toFloat(), h.toFloat()))
+                    val r = x + w
+                    val b = y + h
+                    if (x < minX) minX = x
+                    if (y < minY) minY = y
+                    if (r > maxR) maxR = r
+                    if (b > maxB) maxB = b
                 }
-                // Update popup anchor to first rect for text avoidance
                 if (arr.length() > 0) {
-                    val first = arr.getJSONObject(0)
                     lookupState = lookupState?.copy(
-                        anchorX = first.getDouble("x").toFloat(),
-                        anchorY = first.getDouble("y").toFloat(),
-                        anchorWidth = first.getDouble("width").toFloat(),
-                        anchorHeight = first.getDouble("height").toFloat(),
+                        anchorX = minX.toFloat(),
+                        anchorY = minY.toFloat(),
+                        anchorWidth = (maxR - minX).toFloat(),
+                        anchorHeight = (maxB - minY).toFloat(),
                     )
                 }
             } catch (_: Exception) {}
+
+            val elapsed = SystemClock.elapsedRealtime() - lookupStartTime
+            if (elapsed > 0) {
+                Log.i("DictionaryLookup", "rects_ms=$elapsed rects=${pendingLookupRects.size}")
+            }
 
             if (pendingShowByRects) {
                 pendingShowByRects = false
@@ -290,6 +302,9 @@ class ChimaReaderActivity : NovelReaderActivity() {
     private data class SelectionRect(val x: Float, val y: Float, val width: Float, val height: Float)
     private val selectionRects = mutableStateListOf<SelectionRect>()
 
+    /** Pending rects — applied to [selectionRects] only when popup content is ready. */
+    private val pendingLookupRects = mutableStateListOf<SelectionRect>()
+
     private data class LookupState(
         val word: String,
         val sentence: String,
@@ -303,11 +318,14 @@ class ChimaReaderActivity : NovelReaderActivity() {
 
     private var lookupDeferred: kotlinx.coroutines.Deferred<chimahon.DictionaryRepository.LookupResult2>? = null
     private var pendingShowByRects = false
+    private var lookupStartTime: Long = 0L
 
     /** Called by [NovelReaderActivity] whenever the user selects text in the WebView. */
     override fun onLookupRequested(word: String, sentence: String, x: Float, y: Float, w: Float, h: Float) {
         val (profile, termPaths) = getOrRefreshLookupPaths()
         cancelActiveLookup()
+        lookupStartTime = SystemClock.elapsedRealtime()
+        pendingLookupRects.clear()
         lookupDeferred = lifecycleScope.async(Dispatchers.Default) {
             Injekt.get<DictionaryRepository>().lookup(word.trim(), termPaths, profile.languageCode)
         }
@@ -347,6 +365,7 @@ class ChimaReaderActivity : NovelReaderActivity() {
         super.onDismissPopupRequested()
         popupVisible = false
         selectionRects.clear()
+        pendingLookupRects.clear()
         cancelActiveLookup()
         isPopupActive = false
     }
@@ -354,6 +373,17 @@ class ChimaReaderActivity : NovelReaderActivity() {
     private fun cancelActiveLookup() {
         lookupDeferred?.cancel()
         lookupDeferred = null
+    }
+
+    /** Apply pending rects to highlight only when popup content is ready. */
+    private fun onPopupContentReady(ready: Boolean) {
+        if (ready && pendingLookupRects.isNotEmpty()) {
+            val elapsed = SystemClock.elapsedRealtime() - lookupStartTime
+            Log.i("DictionaryLookup", "pipeline_ms=$elapsed")
+            selectionRects.clear()
+            selectionRects.addAll(pendingLookupRects)
+            pendingLookupRects.clear()
+        }
     }
 
     /**
@@ -376,6 +406,7 @@ class ChimaReaderActivity : NovelReaderActivity() {
         BackHandler(enabled = popupVisible) {
             popupVisible = false
             selectionRects.clear()
+            pendingLookupRects.clear()
             cancelActiveLookup()
             isPopupActive = false
         }
@@ -396,6 +427,7 @@ class ChimaReaderActivity : NovelReaderActivity() {
                 onDismiss = {
                     popupVisible = false
                     selectionRects.clear()
+                    pendingLookupRects.clear()
                     cancelActiveLookup()
                     isPopupActive = false
                 },
@@ -413,9 +445,9 @@ class ChimaReaderActivity : NovelReaderActivity() {
                 onCropTriggered = null,
                 initialLookupDeferred = if (popupVisible) lookupDeferred else null,
                 usePopup = false,
-                onTermMatched = { charCount, startOffset ->
-                    readerViewModel?.bridge?.send(com.canopus.chimareader.ui.reader.WebViewCommand.GetSelectionRects(charCount, startOffset))
-                },
+                // Novel reader: rects already sent by onLookupRequested; no OCR block to refine
+                onTermMatched = null,
+                onContentReadyChange = ::onPopupContentReady,
                 modifier = Modifier,
             )
         }
@@ -431,6 +463,7 @@ class ChimaReaderActivity : NovelReaderActivity() {
         popupWebView = null
         lookupState = null
         selectionRects.clear()
+        pendingLookupRects.clear()
     }
 
     /**

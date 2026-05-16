@@ -857,15 +857,13 @@
 
   function postContentReady() {
     requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        try {
-          if (window.DictionaryReadyBridge && window.DictionaryReadyBridge.contentReady) {
-            window.DictionaryReadyBridge.contentReady();
-          }
-        } catch (e) {
-          console.warn('[DictionaryRenderJS] contentReady bridge failed:', e);
+      try {
+        if (window.DictionaryReadyBridge && window.DictionaryReadyBridge.contentReady) {
+          window.DictionaryReadyBridge.contentReady();
         }
-      });
+      } catch (e) {
+        console.warn('[DictionaryRenderJS] contentReady bridge failed:', e);
+      }
     });
   }
 
@@ -2496,60 +2494,64 @@
     },
 
     /**
-     * Fetch payload from PayloadBridge @JavascriptInterface and render.
-     * Avoids passing 300KB+ JSON through evaluateJavascript() — the bridge
-     * delivers the string natively, which is faster for large payloads.
+     * Read config + entries injected as JS literals via evaluateJavascript.
+     * No JSON.parse needed — the JS engine parsed them natively during evaluation.
      */
-    renderFromBridge() {
+    renderFromGlobals() {
       try {
-        if (typeof PayloadBridge === 'undefined') {
-          console.error('[DictionaryRenderJS] PayloadBridge not available');
+        const payload = window._lookupConfig;
+        if (!payload || typeof payload !== 'object') {
+          console.error('[DictionaryRenderJS] renderFromGlobals: no config');
           return;
         }
-        const json = PayloadBridge.getPayloadJson();
-        if (!json) {
-          console.error('[DictionaryRenderJS] PayloadBridge returned empty');
-          return;
-        }
-        const payload = JSON.parse(json);
+        const entries = window._lookupEntries || [];
+        payload.results = entries;
+        window._lookupConfig = undefined;
+        window._lookupEntries = undefined;
         render(payload);
       } catch (e) {
-        console.error('[DictionaryRenderJS] renderFromBridge error:', e.message);
+        console.error('[DictionaryRenderJS] renderFromGlobals error:', e.message);
       }
     },
 
     /**
-     * Set entry HTML directly from Kotlin (pre-built via buildEntryHtml).
-     * Skips JS-side DOM creation entirely — WebKit's C++ HTML parser handles it.
-     * The bridge delivers the HTML string natively.
+     * Fetch config payload from PayloadBridge, then pull results lazily via
+     * getEntry(index). Avoids JSON.parse of the entire results array — each
+     * entry is parsed individually, which is faster for large result sets.
      */
-    renderFromHtmlBridge() {
+    renderFromBridgeWithEntries() {
       try {
         if (typeof PayloadBridge === 'undefined') {
           console.error('[DictionaryRenderJS] PayloadBridge not available');
           return;
         }
-        const html = PayloadBridge.getEntryHtml();
-        if (html == null) {
-          console.error('[DictionaryRenderJS] PayloadBridge.getEntryHtml returned null');
+        const configJson = PayloadBridge.getPayloadJson();
+        if (!configJson) {
+          console.error('[DictionaryRenderJS] PayloadBridge.getPayloadJson returned empty');
           return;
         }
+        const payload = JSON.parse(configJson);
 
-        const container = document.getElementById('entries');
-        if (!container) return;
+        // Pull results lazily via getEntry(index)
+        const results = [];
+        let index = 0;
+        while (true) {
+          const entryJson = PayloadBridge.getEntry(index);
+          if (entryJson === null || entryJson === undefined) break;
+          results.push(JSON.parse(entryJson));
+          index++;
+        }
+        payload.results = results;
 
-        container.innerHTML = html;
-        requestAnimationFrame(() => {
-          postContentReady();
-        });
+        render(payload);
       } catch (e) {
-        console.error('[DictionaryRenderJS] renderFromHtmlBridge error:', e.message);
+        console.error('[DictionaryRenderJS] renderFromBridgeWithEntries error:', e.message);
       }
     },
 
     /**
      * Clear entries container and re-render from bridge payload.
-     * Used for warm-shell lookups — no page reload needed.
+     * Uses lazy entry loading via getEntry(index) for warm-shell lookups.
      */
     replacePopupResults() {
       try {
@@ -2557,16 +2559,27 @@
           console.error('[DictionaryRenderJS] PayloadBridge not available');
           return;
         }
-        const json = PayloadBridge.getPayloadJson();
-        if (!json) return;
-        const payload = JSON.parse(json);
+        const configJson = PayloadBridge.getPayloadJson();
+        if (!configJson) return;
+        const payload = JSON.parse(configJson);
+
+        // Pull results lazily
+        const results = [];
+        let index = 0;
+        while (true) {
+          const entryJson = PayloadBridge.getEntry(index);
+          if (entryJson === null || entryJson === undefined) break;
+          results.push(JSON.parse(entryJson));
+          index++;
+        }
+        payload.results = results;
 
         _selectedDictionaries = {};
         if (payload.ankiDupAction !== undefined) {
           _lastAnkiDupAction = payload.ankiDupAction;
         }
         window.lookupEntries = undefined;
-        window.entryCount = Array.isArray(payload.results) ? payload.results.length : 0;
+        window.entryCount = results.length;
 
         const container = document.getElementById('entries');
         if (container) container.textContent = '';

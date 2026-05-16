@@ -109,6 +109,7 @@ fun OcrLookupPopup(
     initialLookupDeferred: kotlinx.coroutines.Deferred<chimahon.DictionaryRepository.LookupResult2>? = null,
     usePopup: Boolean = true,
     onTermMatched: ((Int, Int) -> Unit)? = null,
+    onContentReadyChange: ((Boolean) -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -134,7 +135,7 @@ fun OcrLookupPopup(
     val styles = currentFrame?.styles ?: emptyList()
     val mediaDataUris = currentFrame?.mediaDataUris ?: emptyMap()
     val existingExpressions = currentFrame?.existingExpressions ?: emptySet()
-    var contentReady by remember { mutableStateOf(false) }
+    var contentReady by remember(visible) { mutableStateOf(false) }
     // Tracks the lookupGeneration value at the time content was last painted.
     // Used to distinguish a fresh lookup (hide stale content) from a same-lookup
     // invalidation like an Anki-status patch (keep content visible).
@@ -205,6 +206,7 @@ fun OcrLookupPopup(
 
         val finalQuery = if (isRecursive) cleanQuery else query
         val generation = ++lookupGeneration
+        contentReady = false
         val shouldShowLoading = !isRecursive && lastRenderedLookupGeneration < 0
 
         fun handleResult(result: chimahon.DictionaryRepository.LookupResult2, phaseStart: Long) {
@@ -284,9 +286,28 @@ fun OcrLookupPopup(
             }
         }
 
-        val deferred = deferredResult ?: scope.async(Dispatchers.IO) {
+        val deferred = deferredResult ?: if (isRecursive) {
+            // Recursive lookups: session is warm (~5-20ms), run synchronously
+            // to avoid coroutine dispatch overhead. getDictionaryPaths has
+            // internal caching so the stat call is fast.
             val termPaths = getDictionaryPaths(context, activeProfile)
-            repository.lookup(finalQuery, termPaths, activeProfile.languageCode)
+            val result = runCatching {
+                repository.lookup(finalQuery, termPaths, activeProfile.languageCode)
+            }.getOrElse {
+                chimahon.DictionaryRepository.LookupResult2(
+                    results = emptyList(),
+                    styles = emptyList(),
+                    mediaDataUris = emptyMap(),
+                    error = it.message,
+                )
+            }
+            handleResult(result, android.os.SystemClock.elapsedRealtime())
+            return
+        } else {
+            scope.async(Dispatchers.IO) {
+                val termPaths = getDictionaryPaths(context, activeProfile)
+                repository.lookup(finalQuery, termPaths, activeProfile.languageCode)
+            }
         }
 
         if (!deferred.isCompleted) {
@@ -704,6 +725,7 @@ fun OcrLookupPopup(
                                     contentReady = false
                                 }
                             }
+                            onContentReadyChange?.invoke(ready)
                         },
                         modifier = Modifier.fillMaxSize(),
                     )
@@ -745,7 +767,7 @@ fun OcrLookupPopup(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .alpha(if (visible) 1f else 0f)
+                .alpha(if (visible && (contentReady || errorMessage != null)) 1f else 0f)
                 .offset(
                     x = with(LocalDensity.current) { if (visible) layoutResult.x.toDp() else hideOffset },
                     y = with(LocalDensity.current) { if (visible) layoutResult.y.toDp() else hideOffset },
