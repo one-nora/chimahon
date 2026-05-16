@@ -61,6 +61,7 @@ include(":macrobenchmark")
 include(":presentation-core")
 include(":presentation-widget")
 include(":source-api")
+include(":source-api-novel")
 include(":source-local")
 include(":telemetry")
 
