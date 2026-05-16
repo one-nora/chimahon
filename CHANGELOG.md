@@ -5,6 +5,32 @@ All notable changes to Chimahon are documented here.
 The format follows a Keep a Changelog style and uses Semantic Versioning.
 
 
+## [v1.7.5]
+
+### Added
+- AnkiDroid sync trigger on card creation.
+
+### Changed
+- Novel library UI aligned with manga library.
+- Improved popup E-Ink mode.
+- Lookup performance optimizations.
+
+### Fixed
+- Dictionary popup flicker and scroll delay.
+- Edge-to-edge text at 0% padding in novel reader.
+- Black background crop detection.
+- Pitch accent ordering in popup and Anki exports.
+- Glossary fallback when no dictionary selected.
+- EPUB line-height stripping in CSS cleaning.
+- Paged horizontal margins respecting line-height setting.
+
+
+## [v1.7.3]
+
+### Fixed
+- Korean text handling for TTSU and dictionary deinflection.
+
+
 ## [v1.7.1]
 
 ### Added
