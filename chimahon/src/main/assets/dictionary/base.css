@@ -697,6 +697,12 @@ html[data-chima-eink-mode="true"] .dictionary-header {
   transition: none !important;
 }
 
+html[data-chima-eink-mode="true"] .dictionary-header.selected {
+  background: #000 !important;
+  color: #fff !important;
+  border-left-color: #000 !important;
+}
+
 html[data-chima-eink-mode="true"] .dict-arrow {
   transition: none !important;
 }
@@ -801,6 +807,12 @@ html[data-theme="dark"][data-chima-eink-mode="true"] .lookup-tab.active {
   background: #fff !important;
   color: #000 !important;
   border-color: #fff !important;
+}
+
+html[data-theme="dark"][data-chima-eink-mode="true"] .dictionary-header.selected {
+  background: #fff !important;
+  color: #000 !important;
+  border-left-color: #fff !important;
 }
 
 html[data-theme="dark"][data-chima-eink-mode="true"] .lookup-tab {

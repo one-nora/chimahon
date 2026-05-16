@@ -734,7 +734,8 @@
       requestAnimationFrame(() => {
         const activeBtn = el.querySelector(`[data-tab-index="${activeIndex}"]`);
         if (activeBtn) {
-          activeBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+          const isEink = document.documentElement.dataset.chimaEinkMode === 'true';
+          activeBtn.scrollIntoView({ behavior: isEink ? 'instant' : 'smooth', block: 'nearest', inline: 'center' });
         }
       });
     }
@@ -2614,7 +2615,8 @@
 
       if (groups[nextIndex]) {
         _isJumping = true;
-        groups[nextIndex].scrollIntoView({ behavior: 'smooth', block: 'start' });
+        const isEink = document.documentElement.dataset.chimaEinkMode === 'true';
+        groups[nextIndex].scrollIntoView({ behavior: isEink ? 'instant' : 'smooth', block: 'start' });
         
         // Hide tab bar when using navigation buttons/volume keys as requested
         if (_tabsEl) _hideTabs();

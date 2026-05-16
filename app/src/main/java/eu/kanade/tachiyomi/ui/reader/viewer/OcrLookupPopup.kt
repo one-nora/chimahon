@@ -146,6 +146,7 @@ fun OcrLookupPopup(
     val popupHeightPref by dictionaryPreferences.popupHeight().collectAsState()
     val popupModePref by dictionaryPreferences.popupMode().collectAsState()
     val popupFontSizePref by dictionaryPreferences.fontSize().collectAsState()
+    val eInkMode by dictionaryPreferences.eInkMode().collectAsState()
 
     val ankiEnabled = activeProfile.ankiEnabled
     val ankiDeck = activeProfile.ankiDeck
@@ -646,10 +647,10 @@ fun OcrLookupPopup(
                 ) {
                     // Consume taps on the popup itself to prevent them from falling through to the reader
                 },
-            shape = RoundedCornerShape(8.dp),
+            shape = RoundedCornerShape(if (eInkMode) 0.dp else 8.dp),
             color = BgColor,
             tonalElevation = 0.dp,
-            shadowElevation = 6.dp,
+            shadowElevation = if (eInkMode) 0.dp else 6.dp,
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
                 DictionaryEntryWebView(
