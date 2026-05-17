@@ -13,7 +13,13 @@ import chimahon.audio.WordAudioService
 import chimahon.audio.WordAudioPreferences
 import chimahon.DictionaryRepository
 import eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences
+import chimahon.novel.manager.NovelSourceManager
+import chimahon.novel.model.NovelServerStorage
 import com.canopus.chimareader.data.NovelCategoryStorage
+import tachiyomi.data.novel.NovelChapterRepositoryImpl
+import tachiyomi.data.novel.NovelRepositoryImpl
+import tachiyomi.domain.novel.repository.NovelChapterRepository
+import tachiyomi.domain.novel.repository.NovelRepository
 import eu.kanade.domain.track.store.DelayedTrackingStore
 import eu.kanade.tachiyomi.core.security.SecurityPreferences
 import eu.kanade.tachiyomi.data.BackupRestoreStatus
@@ -234,5 +240,9 @@ class AppModule(val app: Application) : InjektModule {
 
         addSingletonFactory { GoogleDriveService(app) }
         addSingletonFactory { NovelCategoryStorage(app) }
+        addSingletonFactory { NovelServerStorage(app) }
+        addSingletonFactory { NovelSourceManager(get<NovelServerStorage>()) }
+        addSingletonFactory<NovelRepository> { NovelRepositoryImpl(get()) }
+        addSingletonFactory<NovelChapterRepository> { NovelChapterRepositoryImpl(get()) }
     }
 }

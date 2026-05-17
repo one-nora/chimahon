@@ -90,5 +90,9 @@ DELETE FROM novel_chapters WHERE _id = :id;
 deleteChaptersByNovelId:
 DELETE FROM novel_chapters WHERE novel_id = :novelId;
 
+removeChaptersWithNoNovel:
+DELETE FROM novel_chapters
+WHERE novel_id NOT IN (SELECT _id FROM novels);
+
 selectLastInsertedRowId:
 SELECT last_insert_rowid();

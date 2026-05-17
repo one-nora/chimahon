@@ -1,0 +1,53 @@
+package tachiyomi.data.novel
+
+import tachiyomi.domain.novel.model.Novel
+
+object NovelMapper {
+    fun mapNovel(
+        _id: Long,
+        source: Long,
+        url: String,
+        title: String,
+        artist: String?,
+        author: String?,
+        description: String?,
+        genre: String?,
+        status: Long,
+        thumbnail_url: String?,
+        favorite: Boolean,
+        last_update: Long,
+        next_update: Long,
+        initialized: Boolean,
+        cover_last_modified: Long,
+        date_added: Long,
+        total_chapters: Int,
+        last_modified_at: Long,
+        favorite_modified_at: Long?,
+        fetch_interval: Int,
+        version: Long,
+        notes: String,
+    ): Novel = Novel(
+        id = _id,
+        source = source,
+        url = url,
+        title = title,
+        artist = artist,
+        author = author,
+        description = description,
+        genre = genre,
+        status = status,
+        thumbnailUrl = thumbnail_url,
+        favorite = favorite,
+        lastUpdate = last_update,
+        nextUpdate = next_update,
+        initialized = initialized,
+        coverLastModified = cover_last_modified,
+        dateAdded = date_added,
+        totalChapters = total_chapters,
+        lastModifiedAt = last_modified_at,
+        favoriteModifiedAt = favorite_modified_at,
+        fetchInterval = fetch_interval,
+        version = version,
+        notes = notes,
+    )
+}
