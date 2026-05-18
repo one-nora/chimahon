@@ -94,6 +94,7 @@ import tachiyomi.domain.library.model.LibraryDisplayMode
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.sy.SYMR
 import tachiyomi.presentation.core.components.CheckboxItem
+import tachiyomi.presentation.core.components.FastScrollLazyColumn
 import tachiyomi.presentation.core.components.FastScrollLazyVerticalGrid
 import tachiyomi.presentation.core.components.HeadingItem
 import tachiyomi.presentation.core.components.SettingsChipRow
@@ -170,7 +171,13 @@ fun Screen.NovelLibraryScreen(
                     }
                 },
                 onClickGlobalUpdate = null,
-                onClickOpenRandomManga = null,
+                onClickOpenRandomManga = {
+                    val randomBook = screenModel.getRandomBookForCurrentCategory()
+                    if (randomBook != null) {
+                        val bookDir = com.canopus.chimareader.data.BookStorage.getBookDirectory(context, randomBook.id)
+                        com.canopus.chimareader.ui.reader.NovelReaderActivity.launch(context, bookDir)
+                    }
+                },
                 onClickSyncNow = null,
                 onClickSyncExh = null,
                 isSyncEnabled = false,
@@ -479,6 +486,8 @@ fun Screen.NovelLibraryScreen(
 
                             SettingsChipRow(MR.strings.action_display_mode) {
                                 listOf(
+                                    MR.strings.action_display_list to LibraryDisplayMode.List,
+                                    MR.strings.action_display_cover_only_grid to LibraryDisplayMode.CoverOnlyGrid,
                                     MR.strings.action_display_grid to LibraryDisplayMode.CompactGrid,
                                     MR.strings.action_display_comfortable_grid to LibraryDisplayMode.ComfortableGrid,
                                 ).map { (titleRes, mode) ->
@@ -490,19 +499,21 @@ fun Screen.NovelLibraryScreen(
                                 }
                             }
 
-                            val configuration = LocalConfiguration.current
-                            val isLandscape = configuration.orientation ==
-                                android.content.res.Configuration.ORIENTATION_LANDSCAPE
-                            val columnPreference = screenModel.getColumnsPreferenceForOrientation(isLandscape)
-                            val columns by columnPreference.collectAsState()
+                            if (displayMode != LibraryDisplayMode.List) {
+                                val configuration = LocalConfiguration.current
+                                val isLandscape = configuration.orientation ==
+                                    android.content.res.Configuration.ORIENTATION_LANDSCAPE
+                                val columnPreference = screenModel.getColumnsPreferenceForOrientation(isLandscape)
+                                val columns by columnPreference.collectAsState()
 
-                            SliderItem(
-                                value = columns,
-                                valueRange = 0..10,
-                                label = stringResource(MR.strings.pref_library_columns),
-                                valueString = if (columns > 0) columns.toString() else stringResource(MR.strings.label_auto),
-                                onChange = columnPreference::set,
-                            )
+                                SliderItem(
+                                    value = columns,
+                                    valueRange = 0..10,
+                                    label = stringResource(MR.strings.pref_library_columns),
+                                    valueString = if (columns > 0) columns.toString() else stringResource(MR.strings.label_auto),
+                                    onChange = columnPreference::set,
+                                )
+                            }
 
                             HeadingItem(MR.strings.tabs_header)
                             CheckboxItem(
@@ -656,6 +667,68 @@ fun NovelLibraryContent(
                             .padding(bottom = contentPadding.calculateBottomPadding())
                             .padding(8.dp),
                     )
+                } else if (books.isEmpty()) {
+                    EmptyScreen(
+                        stringRes = MR.strings.information_no_manga_category,
+                        modifier = Modifier
+                            .padding(bottom = contentPadding.calculateBottomPadding())
+                            .padding(8.dp),
+                    )
+                } else if (displayMode == LibraryDisplayMode.List) {
+                    FastScrollLazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(bottom = contentPadding.calculateBottomPadding()) + PaddingValues(vertical = 8.dp),
+                    ) {
+                        items(books, key = { it.id }) { book ->
+                            val isSelected = state.selection.contains(book.id)
+                            val coverData = tachiyomi.domain.manga.model.MangaCover(
+                                mangaId = book.id.hashCode().toLong(),
+                                sourceId = -1L,
+                                isMangaFavorite = true,
+                                ogUrl = book.cover,
+                                lastModified = 0L,
+                            )
+                            val onLongClick: () -> Unit = { screenModel.toggleSelection(book.id) }
+                            val onClick: () -> Unit = {
+                                if (state.selectionMode) {
+                                    screenModel.toggleSelection(book.id)
+                                } else {
+                                    onClickBook(book)
+                                }
+                            }
+
+                            val bookLang = book.lang
+
+                            eu.kanade.presentation.library.components.MangaListItem(
+                                isSelected = isSelected,
+                                title = book.title ?: "",
+                                coverData = coverData,
+                                badge = {
+                                    if (!bookLang.isNullOrBlank()) {
+                                        eu.kanade.presentation.library.components.LanguageBadge(
+                                            isLocal = true,
+                                            sourceLanguage = bookLang,
+                                        )
+                                    }
+                                    if (book.isGhost) {
+                                        androidx.compose.material3.Surface(
+                                            shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp),
+                                            color = androidx.compose.material3.MaterialTheme.colorScheme.errorContainer,
+                                        ) {
+                                            androidx.compose.material3.Text(
+                                                text = "MISSING",
+                                                modifier = androidx.compose.ui.Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                                                style = androidx.compose.material3.MaterialTheme.typography.labelSmall,
+                                                color = androidx.compose.material3.MaterialTheme.colorScheme.onErrorContainer,
+                                            )
+                                        }
+                                    }
+                                },
+                                onLongClick = onLongClick,
+                                onClick = onClick,
+                            )
+                        }
+                    }
                 } else {
                     FastScrollLazyVerticalGrid(
                         modifier = Modifier.fillMaxSize(),
@@ -682,7 +755,7 @@ fun NovelLibraryContent(
                                 }
                             }
 
-                            val bookTitle = book.title ?: ""
+                            val bookTitle = if (displayMode == LibraryDisplayMode.CoverOnlyGrid) null else (book.title ?: "")
                             val bookLang = book.lang
 
                             val ghostBadge: @Composable (androidx.compose.foundation.layout.RowScope.() -> Unit)? =

@@ -57,7 +57,12 @@ class NovelCategoryScreenModel(
             val allBooks = BookStorage.loadAllBooks(app)
             allBooks.filter { it.categoryIds.contains(category.id) }.forEach { book ->
                 val bookDir = BookStorage.getBookDirectory(app, book.id)
-                val updatedCategories = (book.categoryIds - category.id + NovelCategory.UNCATEGORIZED_ID).distinct()
+                val remainingIds = book.categoryIds - category.id
+                val updatedCategories = if (remainingIds.isEmpty()) {
+                    listOf(NovelCategory.UNCATEGORIZED_ID)
+                } else {
+                    remainingIds
+                }
                 BookStorage.saveMetadata(book.copy(categoryIds = updatedCategories), bookDir)
             }
             categoryStorage.deleteCategory(category.id)

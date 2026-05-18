@@ -383,4 +383,10 @@ class NovelLibraryScreenModel(
         val cat = mutableState.value.categories.find { it.id == defaultId }
         return cat?.name ?: "None"
     }
+
+    fun getRandomBookForCurrentCategory(): BookMetadata? {
+        val s = mutableState.value
+        val category = s.activeCategory ?: return null
+        return s.getBooksForCategory(category).randomOrNull()
+    }
 }
