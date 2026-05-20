@@ -711,6 +711,7 @@ fun OcrLookupPopup(
                     // result even while the popup is invisible to the user.
                     wordAudioAutoplayOverride = if (visible) wordAudioAutoplay else false,
                     groupPitches = groupPitches,
+                    requestFocusOnMount = true,
                     webViewProvider = { webView },
                     onAnkiLookup = onAnkiLookup,
                     onRecursiveLookup = onRecursiveLookup,

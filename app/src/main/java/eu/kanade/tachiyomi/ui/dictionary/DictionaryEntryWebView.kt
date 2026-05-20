@@ -60,6 +60,7 @@ fun DictionaryEntryWebView(
     onContentReadyChange: ((Boolean) -> Unit)? = null,
     hideOnContentInvalidated: Boolean = true,
     forceDefaultTheme: Boolean = false,
+    requestFocusOnMount: Boolean = false,
     isLoading: Boolean = false,
 ) {
     val context = LocalContext.current
@@ -171,7 +172,9 @@ fun DictionaryEntryWebView(
                 webView.isLongClickable = true
                 webView.isFocusable = true
                 webView.isFocusableInTouchMode = true
-                webView.requestFocus()
+                if (requestFocusOnMount) {
+                    webView.requestFocus()
+                }
                 webView.setOnLongClickListener { false }
 
                 webView.setOnKeyListener { v, keyCode, event ->
