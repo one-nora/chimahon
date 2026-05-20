@@ -348,7 +348,7 @@ abstract class PagerViewer(
             logcat { "Pager first layout" }
             val pages = chapters.currChapter.pages ?: return
             moveToPage(pages[min(chapters.currChapter.requestedPage, pages.lastIndex)])
-            pager.isVisible = true
+            pager.post { pager.isVisible = true }
         }
 
         pager.addOnPageChangeListener(pagerListener)
