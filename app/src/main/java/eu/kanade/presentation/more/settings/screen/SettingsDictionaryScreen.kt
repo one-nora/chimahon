@@ -1561,7 +1561,7 @@ object SettingsDictionaryScreen : SearchableSettings {
                         }
 
                     }
-                    
+
                 }
                 ),
             ),

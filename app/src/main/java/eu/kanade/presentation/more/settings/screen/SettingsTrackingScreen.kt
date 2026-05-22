@@ -190,6 +190,11 @@ object SettingsTrackingScreen : SearchableSettings {
                         login = { context.openInBrowser(BangumiApi.authUrl(), forceDefaultBrowser = true) },
                         logout = { dialog = LogoutDialog(trackerManager.bangumi) },
                     ),
+                    Preference.PreferenceItem.TrackerPreference(
+                        tracker = trackerManager.mangabaka,
+                        login = { dialog = LoginDialog(trackerManager.mangabaka, MR.strings.email) },
+                        logout = { dialog = LogoutDialog(trackerManager.mangabaka) },
+                    ),
                     Preference.PreferenceItem.InfoPreference(stringResource(MR.strings.tracking_info)),
                 ),
             ),
