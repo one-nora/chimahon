@@ -749,8 +749,8 @@ object AnkiCardCreator {
         if (reading.isBlank() || expression == reading) return expression
         val segments = distributeFurigana(expression, reading)
         return segments.joinToString("") { (text, furigana) ->
-            if (furigana.isNotEmpty()) "$text[$furigana]" else text
-        }
+            if (furigana.isNotEmpty()) "$text[$furigana]" else "$text "
+        }.trimEnd()
     }
 
     private fun distributeFurigana(expression: String, reading: String): List<Pair<String, String>> {
@@ -1138,7 +1138,9 @@ object AnkiCardCreator {
             }
             sb.append(""" style="$cssStr"""")
         } else {
-            // Apply compact default styles for common block tags in Anki
+            // Apply compact default styles for common block tags in Anki.
+            // Avoid inline defaults for table elements — dictionary CSS
+            // (included as scoped <style>) would be overridden by inline styles.
             when (tag) {
                 "ul", "ol" -> sb.append(""" style="margin: 0.2em 0; padding-left: 1.2em;"""")
                 "p", "div" -> sb.append(""" style="margin: 0.1em 0;"""")
