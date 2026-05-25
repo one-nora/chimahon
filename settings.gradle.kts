@@ -62,6 +62,7 @@ include(":presentation-core")
 include(":presentation-widget")
 include(":source-api")
 include(":source-api-novel")
+include(":plugin-api")
 include(":source-local")
 include(":telemetry")
 
