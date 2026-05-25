@@ -15,6 +15,7 @@ import chimahon.DictionaryRepository
 import eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences
 import chimahon.novel.manager.NovelSourceManager
 import chimahon.novel.model.NovelServerStorage
+import chimahon.novel.extension.NovelExtensionManager
 import com.canopus.chimareader.data.NovelCategoryStorage
 import tachiyomi.data.novel.NovelChapterRepositoryImpl
 import tachiyomi.data.novel.NovelRepositoryImpl
@@ -241,7 +242,8 @@ class AppModule(val app: Application) : InjektModule {
         addSingletonFactory { GoogleDriveService(app) }
         addSingletonFactory { NovelCategoryStorage(app) }
         addSingletonFactory { NovelServerStorage(app) }
-        addSingletonFactory { NovelSourceManager(get<NovelServerStorage>()) }
+        addSingletonFactory { NovelExtensionManager(app) }
+        addSingletonFactory { NovelSourceManager(get<NovelServerStorage>(), get<NovelExtensionManager>()) }
         addSingletonFactory<NovelRepository> { NovelRepositoryImpl(get()) }
         addSingletonFactory<NovelChapterRepository> { NovelChapterRepositoryImpl(get()) }
     }
