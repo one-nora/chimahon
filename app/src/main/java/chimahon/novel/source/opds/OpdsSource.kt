@@ -4,11 +4,13 @@ import chimahon.novel.model.NovelServer
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.network.awaitSuccess
-import eu.kanade.tachiyomi.sourcenovel.NovelSource
+import eu.kanade.tachiyomi.sourcenovel.NovelsPageSource
 import eu.kanade.tachiyomi.sourcenovel.model.ChapterContent
 import eu.kanade.tachiyomi.sourcenovel.model.NovelPage
 import eu.kanade.tachiyomi.sourcenovel.model.SNChapter
 import eu.kanade.tachiyomi.sourcenovel.model.SNNovel
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -25,14 +27,15 @@ import java.security.MessageDigest
 
 class OpdsSource(
     private val server: NovelServer,
-) : NovelSource {
+) : NovelsPageSource {
 
-    private val network: NetworkHelper by lazy { uy.kohesive.injekt.Injekt.get() }
+    private val network: NetworkHelper by lazy { Injekt.get<NetworkHelper>() }
     private val json = Json { ignoreUnknownKeys = true }
 
     override val id: Long by lazy { generateId(server) }
     override val name: String get() = server.name
-    override val lang: String get() = "en"
+    override val lang: String get() = "all"
+    override val supportsLatest: Boolean get() = true
 
     private val baseUrl: String get() = server.baseUrl.trimEnd('/')
 
@@ -158,20 +161,31 @@ class OpdsSource(
 
     private fun parseNovelDetails(response: Response, novel: SNNovel): SNNovel {
         val body = response.body.string()
-        return if (body.trimStart().startsWith("{")) {
+        val updated = SNNovel.create()
+        if (body.trimStart().startsWith("{")) {
             val root = json.parseToJsonElement(body).jsonObject
-            novel.copy(
-                title = root["metadata"]?.jsonObject?.get("title")?.jsonPrimitive?.content ?: novel.title,
-                author = root["metadata"]?.jsonObject?.get("author")?.jsonObject?.get("name")?.jsonPrimitive?.content ?: novel.author,
-                description = root["metadata"]?.jsonObject?.get("description")?.jsonPrimitive?.content ?: novel.description,
-            )
+            updated.url = novel.url
+            updated.title = root["metadata"]?.jsonObject?.get("title")?.jsonPrimitive?.content ?: novel.title
+            updated.author = root["metadata"]?.jsonObject?.get("author")?.jsonObject?.get("name")?.jsonPrimitive?.content ?: novel.author
+            updated.artist = novel.artist
+            updated.description = root["metadata"]?.jsonObject?.get("description")?.jsonPrimitive?.content ?: novel.description
+            updated.genre = novel.genre
+            updated.status = novel.status
+            updated.thumbnail_url = novel.thumbnail_url
+            updated.initialized = novel.initialized
         } else {
             val doc = Jsoup.parse(body, "UTF-8")
-            novel.copy(
-                title = doc.selectFirst("title")?.text() ?: novel.title,
-                description = doc.selectFirst("content, summary")?.text() ?: novel.description,
-            )
+            updated.url = novel.url
+            updated.title = doc.selectFirst("title")?.text() ?: novel.title
+            updated.author = novel.author
+            updated.artist = novel.artist
+            updated.description = doc.selectFirst("content, summary")?.text() ?: novel.description
+            updated.genre = novel.genre
+            updated.status = novel.status
+            updated.thumbnail_url = novel.thumbnail_url
+            updated.initialized = novel.initialized
         }
+        return updated
     }
 
     private fun parseChapterList(response: Response): List<SNChapter> {

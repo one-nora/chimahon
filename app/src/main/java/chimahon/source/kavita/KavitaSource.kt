@@ -10,11 +10,6 @@ import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
-import eu.kanade.tachiyomi.sourcenovel.NovelsPageSource
-import eu.kanade.tachiyomi.sourcenovel.model.ChapterContent
-import eu.kanade.tachiyomi.sourcenovel.model.NovelPage
-import eu.kanade.tachiyomi.sourcenovel.model.SNChapter
-import eu.kanade.tachiyomi.sourcenovel.model.SNNovel
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -26,21 +21,24 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
+import kotlinx.coroutines.runBlocking
 import java.security.MessageDigest
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.TimeZone
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 
 class KavitaSource(
     private val server: NovelServer,
-) : CatalogueSource, NovelsPageSource {
+) : CatalogueSource {
 
-    private val network: NetworkHelper by lazy { uy.kohesive.injekt.Injekt.get() }
+    private val network: NetworkHelper by lazy { Injekt.get<NetworkHelper>() }
     private val json = Json { ignoreUnknownKeys = true }
 
     override val id: Long by lazy { generateId(server) }
     override val name: String get() = server.name
-    override val lang: String get() = "en"
+    override val lang: String get() = "all"
     override val supportsLatest: Boolean get() = true
 
     private val baseUrl: String get() = server.baseUrl.trimEnd('/')
@@ -68,7 +66,7 @@ class KavitaSource(
                     if (req.url.encodedPath.endsWith("/login", ignoreCase = true)) {
                         chain.proceed(req)
                     } else {
-                        val token = authToken ?: login()
+                        val token = authToken ?: runBlocking { login() }
                         chain.proceed(req.newBuilder().header("Authorization", "Bearer $token").build())
                     }
                 }
@@ -182,109 +180,6 @@ class KavitaSource(
         }
     }
 
-    // ===== Novel NovelsPageSource Implementation =====
-
-    override suspend fun getPopularNovels(page: Int): NovelPage {
-        val libraries = getLibraries().filter { it.type == LIBRARY_TYPE_BOOK || it.type == LIBRARY_TYPE_LIGHT_NOVEL }
-        if (libraries.isEmpty()) return NovelPage(emptyList(), false)
-
-        val filter = KavitaFilterV2Dto(
-            sortOptions = KavitaSortOptions(sortField = 8, isAscending = false),
-            statements = libraries.map { lib ->
-                KavitaFilterStatementDto(comparison = 5, field = 19, value = lib.id.toString())
-            }.toMutableList(),
-        )
-        val payload = json.encodeToJsonElement(filter).toString()
-        val response = client.newCall(
-            POST(
-                "$baseUrl/api/Series/all-v2?pageNumber=$page&pageSize=20",
-                headers = authHeaders,
-                body = payload.toRequestBody("application/json".toMediaType()),
-            ),
-        ).awaitSuccess()
-        return parseNovelPage(response)
-    }
-
-    override suspend fun getSearchNovels(page: Int, query: String, filters: FilterList): NovelPage {
-        val libraries = getLibraries().filter { it.type == LIBRARY_TYPE_BOOK || it.type == LIBRARY_TYPE_LIGHT_NOVEL }
-        val filter = KavitaFilterV2Dto(
-            sortOptions = KavitaSortOptions(sortField = 1, isAscending = true),
-            statements = mutableListOf(),
-        )
-        if (query.isNotBlank()) {
-            filter.statements.add(KavitaFilterStatementDto(comparison = 7, field = 1, value = query))
-        }
-        if (libraries.isNotEmpty()) {
-            filter.statements.addAll(libraries.map { lib ->
-                KavitaFilterStatementDto(comparison = 5, field = 19, value = lib.id.toString())
-            })
-        }
-        val payload = json.encodeToJsonElement(filter).toString()
-        val response = client.newCall(
-            POST(
-                "$baseUrl/api/Series/all-v2?pageNumber=$page&pageSize=20",
-                headers = authHeaders,
-                body = payload.toRequestBody("application/json".toMediaType()),
-            ),
-        ).awaitSuccess()
-        return parseNovelPage(response)
-    }
-
-    override suspend fun getLatestUpdates(page: Int): NovelPage {
-        val libraries = getLibraries().filter { it.type == LIBRARY_TYPE_BOOK || it.type == LIBRARY_TYPE_LIGHT_NOVEL }
-        if (libraries.isEmpty()) return NovelPage(emptyList(), false)
-
-        val filter = KavitaFilterV2Dto(
-            sortOptions = KavitaSortOptions(sortField = 4, isAscending = false),
-            statements = libraries.map { lib ->
-                KavitaFilterStatementDto(comparison = 5, field = 19, value = lib.id.toString())
-            }.toMutableList(),
-        )
-        val payload = json.encodeToJsonElement(filter).toString()
-        val response = client.newCall(
-            POST(
-                "$baseUrl/api/Series/all-v2?pageNumber=$page&pageSize=20",
-                headers = authHeaders,
-                body = payload.toRequestBody("application/json".toMediaType()),
-            ),
-        ).awaitSuccess()
-        return parseNovelPage(response)
-    }
-
-    override suspend fun getNovelDetails(novel: SNNovel): SNNovel {
-        val seriesId = novel.url.substringAfterLast("/")
-        val response = client.newCall(GET("$baseUrl/api/series/metadata?seriesId=$seriesId")).awaitSuccess()
-        return parseNovelDetails(response)
-    }
-
-    override suspend fun getChapterList(novel: SNNovel): List<SNChapter> {
-        val seriesId = novel.url.substringAfterLast("/")
-        val response = client.newCall(GET("$baseUrl/api/Series/$seriesId/Volumes")).awaitSuccess()
-        val volumes = json.decodeFromString<List<KavitaVolumeDto>>(response.body.string())
-        return volumes.flatMap { volume ->
-            volume.chapters.map { chapter ->
-                SNChapter(
-                    name = chapter.titleName?.takeIf { it.isNotBlank() } ?: chapter.range ?: "Chapter ${chapter.minNumber}",
-                    url = "$baseUrl/api/Chapter/${chapter.id}",
-                    chapter_number = chapter.minNumber.toFloat(),
-                    date_upload = chapter.created?.let { parseDateTime(it) } ?: 0L,
-                )
-            }
-        }.sortedByDescending { it.chapter_number }
-    }
-
-    override suspend fun getChapterContent(chapter: SNChapter): ChapterContent {
-        val chapterId = chapter.url.substringAfterLast("/")
-        val response = client.newCall(GET("$baseUrl/api/Chapter/$chapterId/ExtractText")).awaitSuccess()
-        val text = response.body.string()
-        return if (text.isNotBlank()) ChapterContent.text(text) else ChapterContent.text("No text content available")
-    }
-
-    private suspend fun getLibraries(): List<KavitaLibraryDto> {
-        val response = client.newCall(GET("$baseUrl/api/Library")).awaitSuccess()
-        return json.decodeFromString<List<KavitaLibraryDto>>(response.body.string())
-    }
-
     // ===== Parsers =====
 
     private fun parseMangaPage(response: Response): MangasPage {
@@ -297,21 +192,9 @@ class KavitaSource(
         return detail.toSManga(baseUrl)
     }
 
-    private fun parseNovelPage(response: Response): NovelPage {
-        val seriesList = json.decodeFromString<List<KavitaSeriesDto>>(response.body.string())
-        return NovelPage(seriesList.map { it.toSNNovel(baseUrl) }, seriesList.size >= 20)
-    }
-
-    private fun parseNovelDetails(response: Response): SNNovel {
-        val detail = json.decodeFromString<KavitaSeriesDetailPlusDto>(response.body.string())
-        return detail.toSNNovel(baseUrl)
-    }
-
     private fun parseDateTime(dateStr: String): Long = runCatching { formatterDateTime.parse(dateStr)?.time ?: 0L }.getOrDefault(0L)
 
     companion object {
-        private const val LIBRARY_TYPE_BOOK = 2
-        private const val LIBRARY_TYPE_LIGHT_NOVEL = 4
         private val formatterDateTime = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }
 
         fun generateId(server: NovelServer): Long {
@@ -359,14 +242,6 @@ data class KavitaSeriesDto(
         thumbnail_url = "$baseUrl/api/Image/SeriesCover?seriesId=$id"
         initialized = true
     }
-
-    fun toSNNovel(baseUrl: String): SNNovel = SNNovel(
-        url = "$baseUrl/api/Series/$id",
-        title = localizedName?.takeIf { it.isNotBlank() } ?: sortName?.takeIf { it.isNotBlank() } ?: name,
-        description = "",
-        status = SNNovel.UNKNOWN,
-        thumbnail_url = "$baseUrl/api/Image/SeriesCover?seriesId=$id",
-    )
 }
 
 @Serializable
@@ -392,17 +267,6 @@ data class KavitaSeriesDetailPlusDto(
         thumbnail_url = seriesId?.let { "$baseUrl/api/Image/SeriesCover?seriesId=$it" }
         initialized = true
     }
-
-    fun toSNNovel(baseUrl: String): SNNovel = SNNovel(
-        url = seriesId?.let { "$baseUrl/api/Series/$it" } ?: "",
-        title = "",
-        author = writers.joinToString { it.name }.takeIf { it.isNotBlank() },
-        artist = coverArtists.joinToString { it.name }.takeIf { it.isNotBlank() },
-        description = summary,
-        genre = (genres.map { it.title } + tags.map { it.title }).joinToString(", ").takeIf { it.isNotBlank() },
-        status = SNNovel.UNKNOWN,
-        thumbnail_url = seriesId?.let { "$baseUrl/api/Image/SeriesCover?seriesId=$it" },
-    )
 }
 
 @Serializable
