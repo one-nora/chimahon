@@ -20,6 +20,13 @@ data class InstalledExtension(
     val iconUrl: String = ""
 )
 
+data class ExtensionUpdate(
+    val installed: InstalledExtension,
+    val remote: CatalogRemote,
+    val currentVersion: String,
+    val newVersion: String
+)
+
 class ExtensionRepositoryManager(private val context: Context) {
     private val client = OkHttpClient()
     private val json = Json { ignoreUnknownKeys = true }
@@ -35,6 +42,28 @@ class ExtensionRepositoryManager(private val context: Context) {
 
     suspend fun fetchAvailableExtensions(): List<CatalogRemote> {
         return catalogApi.fetchCatalogs()
+    }
+
+    suspend fun checkForUpdates(): List<ExtensionUpdate> {
+        val installed = getInstalledExtensions()
+        if (installed.isEmpty()) return emptyList()
+
+        val remote = try { catalogApi.fetchCatalogs() } catch (e: Exception) { return emptyList() }
+        val remoteMap = remote.associateBy { it.pkgName }
+
+        return installed.mapNotNull { ext ->
+            val remoteExt = remoteMap[ext.id] ?: return@mapNotNull null
+            val currentVer = ext.version.replace(".", "").toIntOrNull() ?: 0
+            val remoteVer = remoteExt.versionName.replace(".", "").toIntOrNull() ?: 0
+            if (remoteVer > currentVer) {
+                ExtensionUpdate(
+                    installed = ext,
+                    remote = remoteExt,
+                    currentVersion = ext.version,
+                    newVersion = remoteExt.versionName
+                )
+            } else null
+        }
     }
 
     suspend fun downloadExtension(entry: CatalogRemote): Result<String> {
