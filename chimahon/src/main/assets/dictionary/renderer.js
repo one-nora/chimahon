@@ -2717,8 +2717,8 @@
     _lastScrollY = y;
   }, { passive: true });
 
-  // ── Reduced motion scrolling (e-ink) ─────────────────────────────────────
-  const _isEink = () => document.documentElement.dataset.chimaEinkMode === 'true';
+  // ── Reduced motion scrolling (paginated scrolling) ──────────────────────
+  const _isPaginatedScrolling = () => document.documentElement.dataset.chimaPaginatedScrolling === 'true';
 
   const _scrollByPopupHeight = (direction) => {
     const popupHeight = window.innerHeight;
@@ -2733,23 +2733,23 @@
   };
 
   window.addEventListener('wheel', (e) => {
-    if (!_isEink()) return;
+    if (!_isPaginatedScrolling()) return;
     _scrollByPopupHeight(e.deltaY > 0 ? 1 : -1);
     e.preventDefault();
   }, { passive: false });
 
   window.addEventListener('touchstart', (e) => {
-    if (!_isEink() || e.touches.length !== 1) return;
+    if (!_isPaginatedScrolling() || e.touches.length !== 1) return;
     _touchStartY = e.touches[0].clientY;
   }, { passive: true });
 
   window.addEventListener('touchmove', (e) => {
-    if (!_isEink()) return;
+    if (!_isPaginatedScrolling()) return;
     e.preventDefault();
   }, { passive: false });
 
   window.addEventListener('touchend', (e) => {
-    if (!_isEink() || _touchStartY === 0) return;
+    if (!_isPaginatedScrolling() || _touchStartY === 0) return;
     const endY = e.changedTouches[0].clientY;
     const delta = _touchStartY - endY;
     _touchStartY = 0;

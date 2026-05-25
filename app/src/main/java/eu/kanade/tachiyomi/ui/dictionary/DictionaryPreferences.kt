@@ -52,6 +52,8 @@ class DictionaryPreferences(
 
     fun eInkMode() = preferenceStore.getBoolean("pref_dictionary_eink_mode", false)
 
+    fun paginatedScrolling() = preferenceStore.getBoolean("pref_dictionary_paginated_scrolling", false)
+
     fun customCss() = preferenceStore.getString("pref_dictionary_custom_css", "")
 
     // -------------------------------------------------------------------------

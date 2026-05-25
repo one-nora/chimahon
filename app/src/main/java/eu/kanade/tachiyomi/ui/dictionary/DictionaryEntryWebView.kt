@@ -92,6 +92,7 @@ fun DictionaryEntryWebView(
     val effectiveWordAudioAutoplay = wordAudioAutoplayOverride ?: wordAudioAutoplay
     val showNavigationButtons by prefs.showNavigationButtons().collectAsState()
     val eInkMode by prefs.eInkMode().collectAsState()
+    val paginatedScrolling by prefs.paginatedScrolling().collectAsState()
 
     val renderSignature = remember(
         results, styles, placeholder, isDark,
@@ -136,11 +137,11 @@ fun DictionaryEntryWebView(
         resultsJsonPair = resultsJsonArray to renderSignature
     }
 
-    val bootstrapHtml = remember(context, isDark, isAmoled, seedColor, colorScheme, fontFamily, eInkMode, activeProfile.languageCode) {
+    val bootstrapHtml = remember(context, isDark, isAmoled, seedColor, colorScheme, fontFamily, eInkMode, paginatedScrolling, activeProfile.languageCode) {
         getDictionaryBootstrapHtml(
             context = context, colorScheme = colorScheme, isDark = isDark,
             isAmoled = isAmoled, seedColor = seedColor, fontFamily = fontFamily,
-            eInkMode = eInkMode, languageCode = activeProfile.languageCode,
+            eInkMode = eInkMode, paginatedScrolling = paginatedScrolling, languageCode = activeProfile.languageCode,
         )
     }
 

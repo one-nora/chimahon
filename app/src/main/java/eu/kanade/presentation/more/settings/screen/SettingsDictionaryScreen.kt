@@ -626,6 +626,11 @@ object SettingsDictionaryScreen : SearchableSettings {
                     subtitle = "Removes animations, shadows, and rounded corners for better readability on e-ink displays",
                 ),
                 Preference.PreferenceItem.SwitchPreference(
+                    preference = dictionaryPreferences.paginatedScrolling(),
+                    title = "Paginated scrolling",
+                    subtitle = "Scroll by page-sized steps instead of smooth scrolling",
+                ),
+                Preference.PreferenceItem.SwitchPreference(
                     preference = showFreqHarmonicPref,
                     title = stringResource(MR.strings.pref_dict_show_frequency_harmonic),
                     subtitle = stringResource(MR.strings.pref_dict_show_frequency_harmonic_summary),
