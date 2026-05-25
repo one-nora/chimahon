@@ -221,6 +221,7 @@ dependencies {
     implementation(projects.core.common)
     implementation(projects.coreMetadata)
     implementation(projects.sourceApi)
+    implementation(projects.sourceApiNovel)
     implementation(projects.sourceLocal)
     implementation(projects.data)
     implementation(projects.domain)
@@ -267,6 +268,7 @@ dependencies {
     implementation(androidx.profileinstaller)
 
     implementation(androidx.bundles.lifecycle)
+    implementation(libs.datastore.preferences)
 
     // Job scheduling
     implementation(androidx.workmanager)

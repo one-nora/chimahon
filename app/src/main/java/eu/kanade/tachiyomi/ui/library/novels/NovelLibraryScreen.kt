@@ -79,6 +79,7 @@ import eu.kanade.presentation.library.components.LibraryToolbar
 import eu.kanade.presentation.library.components.LibraryToolbarTitle
 import eu.kanade.presentation.manga.components.Button as BottomMenuButton
 import eu.kanade.tachiyomi.data.sync.SyncDataJob
+import chimahon.novel.ui.servers.NovelServerConfigScreen
 import eu.kanade.tachiyomi.ui.category.NovelCategoryScreen
 import eu.kanade.tachiyomi.ui.home.HomeScreen
 import eu.kanade.tachiyomi.util.system.toast
@@ -192,6 +193,8 @@ fun Screen.NovelLibraryScreen(
                 updateCategoryTitle = stringResource(SYMR.strings.label_sync),
                 onClickNovelDefaultCategory = screenModel::showNovelDefaultCategoryDialog,
                 novelDefaultCategoryTitle = stringResource(MR.strings.default_category) + ": " + screenModel.getDefaultCategoryDisplayName(),
+                onClickBrowseSources = { navigator.push(NovelServerConfigScreen()) },
+                browseSourcesTitle = "Novel Sources",
             )
         },
         bottomBar = {

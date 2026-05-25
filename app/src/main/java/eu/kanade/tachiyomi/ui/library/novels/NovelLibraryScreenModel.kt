@@ -287,7 +287,7 @@ class NovelLibraryScreenModel(
         val selectionMode: Boolean = selection.isNotEmpty()
 
         val displayedCategories: List<NovelCategory>
-            get() = categories.filterNot { it.isSystemCategory && getBooksForCategory(it).isEmpty() }
+            get() = categories.filterNot { it.isSystemCategory && getItemsForCategory(it).isEmpty() }
 
         val coercedActiveCategoryIndex: Int
             get() = activeCategoryIndex.coerceIn(0, (displayedCategories.size - 1).coerceAtLeast(0))
