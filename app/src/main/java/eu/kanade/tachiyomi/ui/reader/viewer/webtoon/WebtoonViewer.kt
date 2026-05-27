@@ -348,13 +348,14 @@ class WebtoonViewer(
      */
     override fun setChapters(chapters: ViewerChapters) {
         val forceTransition = config.alwaysShowChapterTransition || currentPage is ChapterTransition
+        logcat { "setChapters: isGone=${recycler.visibility == View.GONE} isAttachedToWindow=${recycler.isAttachedToWindow} itemCount=${adapter.itemCount}" }
         adapter.setChapters(chapters, forceTransition)
 
-        if (!recycler.isVisible) {
-            logcat { "Recycler first layout" }
+        if (recycler.visibility == View.GONE) {
+            logcat { "Recycler first layout: isAttachedToWindow=${recycler.isAttachedToWindow} pages=${chapters.currChapter.pages?.size}" }
             val pages = chapters.currChapter.pages ?: return
             moveToPage(pages[min(chapters.currChapter.requestedPage, pages.lastIndex)])
-            recycler.post { recycler.isVisible = true }
+            recycler.isVisible = true
         }
     }
 

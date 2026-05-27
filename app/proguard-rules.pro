@@ -337,3 +337,18 @@
 -dontwarn org.ietf.jgss.GSSManager
 -dontwarn org.ietf.jgss.GSSName
 -dontwarn org.ietf.jgss.Oid
+
+-keepclassmembers class eu.kanade.tachiyomi.ui.reader.viewer.pager.PagerViewer {
+    private void setChaptersInternal(eu.kanade.tachiyomi.ui.reader.viewer.ViewerChapters);
+    public void setChaptersDoubleShift(eu.kanade.tachiyomi.ui.reader.viewer.ViewerChapters);
+    public void setChapters(eu.kanade.tachiyomi.ui.reader.viewer.ViewerChapters);
+}
+-keepclassmembers class eu.kanade.tachiyomi.ui.reader.viewer.webtoon.WebtoonViewer {
+    public void setChapters(eu.kanade.tachiyomi.ui.reader.viewer.ViewerChapters);
+}
+-keepclassmembers class eu.kanade.tachiyomi.ui.reader.viewer.pager.PagerPageHolder {
+    private void initProgressIndicator();
+}
+-keepclassmembers class eu.kanade.tachiyomi.widget.ViewPagerAdapter {
+    public java.lang.Object instantiateItem(android.view.ViewGroup, int);
+}

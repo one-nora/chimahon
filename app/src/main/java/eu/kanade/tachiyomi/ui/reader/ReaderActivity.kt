@@ -1262,7 +1262,7 @@ class ReaderActivity : BaseActivity() {
                 ) % 2 != 0
         }
         viewModel.state.value.viewerChapters?.let {
-            viewer.setChaptersInternal(it)
+            viewer.setChaptersDoubleShift(it)
         }
     }
 
@@ -1286,7 +1286,7 @@ class ReaderActivity : BaseActivity() {
 
             viewModel.state.value.viewerChapters?.let {
                 viewer.updateShifting()
-                viewer.setChaptersInternal(it)
+                viewer.setChaptersDoubleShift(it)
                 invalidateOptionsMenu()
             }
         }

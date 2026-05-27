@@ -104,7 +104,7 @@ abstract class PagerViewer(
             field = value
             if (value) {
                 awaitingIdleViewerChapters?.let { viewerChapters ->
-                    setChaptersInternal(viewerChapters)
+                    setChaptersDoubleShift(viewerChapters)
                     awaitingIdleViewerChapters = null
                     if (viewerChapters.currChapter.pages?.size == 1) {
                         adapter.nextTransition?.to?.let(activity::requestPreloadChapter)
@@ -323,7 +323,7 @@ abstract class PagerViewer(
      */
     override fun setChapters(chapters: ViewerChapters) {
         if (isIdle) {
-            setChaptersInternal(chapters)
+            setChaptersDoubleShift(chapters)
         } else {
             awaitingIdleViewerChapters = chapters
         }
@@ -332,26 +332,23 @@ abstract class PagerViewer(
     /**
      * Sets the active [chapters] on this pager.
      */
-    internal fun setChaptersInternal(chapters: ViewerChapters) {
-        // Remove listener so the change in item doesn't trigger it
-        // since we're about to change the size of the items
-        // If we don't the size change could put us on a new chapter
+    private fun setChaptersInternal(chapters: ViewerChapters) {
         pager.removeOnPageChangeListener(pagerListener)
 
-        val forceTransition = config.alwaysShowChapterTransition ||
-            adapter.joinedItems.getOrNull(pager.currentItem)?.first is ChapterTransition
+        val forceTransition =
+            config.alwaysShowChapterTransition ||
+                adapter.joinedItems.getOrNull(pager.currentItem)?.first is ChapterTransition
+        logcat { "setChaptersInternal: isGone=${pager.visibility == View.GONE} isAttachedToWindow=${pager.isAttachedToWindow} itemCount=${adapter.count}" }
         adapter.setChapters(chapters, forceTransition)
 
-        // Layout the pager once a chapter is being set
-        if (!pager.isVisible) {
-            logcat { "Pager first layout" }
+        if (pager.visibility == View.GONE) {
+            logcat { "Pager first layout: isAttachedToWindow=${pager.isAttachedToWindow} pages=${chapters.currChapter.pages?.size}" }
             val pages = chapters.currChapter.pages ?: return
             moveToPage(pages[min(chapters.currChapter.requestedPage, pages.lastIndex)])
-            pager.post { pager.isVisible = true }
+            pager.isVisible = true
         }
 
         pager.addOnPageChangeListener(pagerListener)
-        // Since we removed the listener while shifting,
         // Manually call onPageChange to update the UI
         onPageChange(pager.currentItem)
     }
@@ -545,6 +542,13 @@ abstract class PagerViewer(
     }
 
     // SY -->
+    fun setChaptersDoubleShift(chapters: ViewerChapters) {
+        pager.removeOnPageChangeListener(pagerListener)
+        setChaptersInternal(chapters)
+        pager.addOnPageChangeListener(pagerListener)
+        onPageChange(pager.currentItem)
+    }
+
     fun updateShifting(page: ReaderPage? = null) {
         adapter.pageToShift = page ?: adapter.joinedItems.getOrNull(pager.currentItem)?.first as? ReaderPage
     }
