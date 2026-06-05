@@ -4,6 +4,23 @@ All notable changes to Chimahon are documented here.
 
 The format follows a Keep a Changelog style and uses Semantic Versioning.
 
+## [v1.9.0]
+
+### Added
+- OCR selection panel triggered with long-press to select and copy text
+- OCR progress HUD
+- Configurable OCR box opacity for inactive text blocks
+- Support for more image formats in OCR: AVIF, HEIF, HEIC, JXL
+
+### Changed
+- Dictionary popup WebView warming refactored for lighter reader startup
+- Improved dictionary popup rendering performance
+- MangaBaka API updated with improved date-time formatting
+
+### Fixed
+- Clipped webtoon page rendering
+- Novel category assignments lost during sync merge
+
 ## [v1.8.5]
 
 ### Added
