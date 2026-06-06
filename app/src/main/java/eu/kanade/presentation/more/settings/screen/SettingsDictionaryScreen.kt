@@ -85,6 +85,7 @@ import com.canopus.chimareader.data.FontManager
 import chimahon.anki.AnkiCardCreator
 import chimahon.anki.AnkiDroidBridge
 import chimahon.anki.AnkiProfile
+import chimahon.anki.LapisPreset
 import chimahon.anki.Marker
 import eu.kanade.presentation.more.settings.Preference
 import eu.kanade.tachiyomi.data.dictionary.DictionaryUpdateJob
@@ -1752,7 +1753,7 @@ object SettingsDictionaryScreen : SearchableSettings {
         }
 
         // Check AnkiDroid status whenever screen is visible and enabled
-        LaunchedEffect(enabled, selectedModel) {
+        LaunchedEffect(enabled, selectedDeck, selectedModel) {
             if (!enabled) {
                 Log.d("AnkiSettings", "Anki disabled, skipping")
                 return@LaunchedEffect
@@ -1770,12 +1771,43 @@ object SettingsDictionaryScreen : SearchableSettings {
 
             // Must have permission to query
             if (ankiInstalled == true && hasPerm) {
-                if (decks.isEmpty() || models.isEmpty()) {
+                try {
                     isLoading = true
+                    val ensuredDeck = if (selectedDeck.isBlank()) {
+                        bridge.ensureDefaultDeckName()
+                    } else {
+                        selectedDeck
+                    }
+                    val ensuredModel = if (selectedModel.isBlank() || LapisPreset.isBundledModelName(selectedModel)) {
+                        bridge.ensureLapisModelName()
+                    } else {
+                        selectedModel
+                    }
                     decks = bridge.deckNames()
                     models = bridge.modelNames()
-                    isLoading = false
                     Log.d("AnkiSettings", "Loaded decks: ${decks.size}, models: ${models.size}")
+
+                    val current = profileStore.getActiveProfile()
+                    var updated = current
+                    if (current.ankiDeck.isBlank() && ensuredDeck.isNotBlank()) {
+                        updated = updated.copy(ankiDeck = ensuredDeck)
+                    }
+                    if (
+                        (current.ankiModel.isBlank() || LapisPreset.isBundledModelName(current.ankiModel)) &&
+                        ensuredModel.isNotBlank()
+                    ) {
+                        updated = updated.copy(ankiModel = ensuredModel)
+                    }
+                    if (LapisPreset.isBundledModelName(updated.ankiModel) && LapisPreset.isBlankFieldMap(updated.ankiFieldMap)) {
+                        updated = updated.copy(ankiFieldMap = LapisPreset.defaultFieldMapJson)
+                    }
+                    if (updated != current) {
+                        profileStore.updateProfile(updated)
+                    }
+                } catch (e: Exception) {
+                    Log.w("AnkiSettings", "Failed to ensure bundled Lapis", e)
+                } finally {
+                    isLoading = false
                 }
             } else if (ankiInstalled == true && !hasPerm) {
                 Log.w("AnkiSettings", "AnkiDroid installed but no permission!")
@@ -1789,12 +1821,16 @@ object SettingsDictionaryScreen : SearchableSettings {
             if (selectedModel.isNotBlank() && ankiInstalled == true && bridge.hasPermission()) {
                 modelFields = bridge.modelFieldNames(selectedModel)
 
-                // Only auto-detect if field map is empty (first-time setup)
+                // Only auto-map if field map is empty (first-time setup or model switch).
                 if (fieldMapJson.isBlank() || fieldMapJson == "{}") {
-                    val detectedMap = modelFields.mapIndexedNotNull { index, fieldName ->
-                        val marker = Marker.autoDetect(fieldName, index)
-                        if (marker != null) fieldName to "{$marker}" else null
-                    }.toMap()
+                    val detectedMap = if (LapisPreset.isLapisLikeModel(selectedModel, modelFields)) {
+                        LapisPreset.defaultFieldMapFor(modelFields)
+                    } else {
+                        modelFields.mapIndexedNotNull { index, fieldName ->
+                            val marker = Marker.autoDetect(fieldName, index)
+                            if (marker != null) fieldName to "{$marker}" else null
+                        }.toMap()
+                    }
 
                     if (detectedMap.isNotEmpty()) {
                         profileStore.updateProfile(profileStore.getActiveProfile().copy(ankiFieldMap = org.json.JSONObject(detectedMap).toString()))

@@ -221,17 +221,33 @@ object AnkiCardCreator {
     ): AnkiResult {
         android.util.Log.d(TAG, "addToAnki: deck=$deck, model=$model, forceOpen=$forceOpen, glossaryIndex=$glossaryIndex")
 
-        if (deck.isBlank() || model.isBlank()) {
-            android.util.Log.w(TAG, "addToAnki: NotConfigured - deck or model is blank")
-            return AnkiResult.NotConfigured
-        }
-
         val bridge = AnkiDroidBridge(context)
         if (!bridge.hasPermission()) {
             return AnkiResult.PermissionDenied
         }
         return try {
-            val fieldMap = parseFieldMap(fieldMapJson)
+            val effectiveDeck = deck.ifBlank { bridge.ensureDefaultDeckName() }
+            val requestedModel = model.ifBlank { LapisPreset.MODEL_NAME }
+            val effectiveModel = if (LapisPreset.isBundledModelName(requestedModel)) {
+                bridge.ensureLapisModelName()
+            } else {
+                requestedModel
+            }
+            val effectiveFieldMapJson = if (
+                LapisPreset.isBundledModelName(effectiveModel) &&
+                LapisPreset.isBlankFieldMap(fieldMapJson)
+            ) {
+                LapisPreset.defaultFieldMapJson
+            } else {
+                fieldMapJson
+            }
+
+            if (effectiveDeck.isBlank() || effectiveModel.isBlank()) {
+                android.util.Log.w(TAG, "addToAnki: NotConfigured - deck or model is blank")
+                return AnkiResult.NotConfigured
+            }
+
+            val fieldMap = parseFieldMap(effectiveFieldMapJson)
             android.util.Log.d(TAG, "addToAnki: parsed fieldMap=$fieldMap")
             val cloze = if (sentence.isNotEmpty() && offset >= 0) {
                 // Use result.matched (the exact surface form the dictionary engine consumed)
@@ -257,7 +273,9 @@ object AnkiCardCreator {
             }
 
             var wordAudioFilename: String? = null
-            val hasWordAudioMarker = fieldMap.values.any { it.contains("{${Marker.WORD_AUDIO}}") }
+            val hasWordAudioMarker = fieldMap.values.any {
+                it.contains("{${Marker.WORD_AUDIO}}") || it.contains("{${Marker.AUDIO}}")
+            }
             if (hasWordAudioMarker) {
                 try {
                     val wordAudioService = Injekt.get<WordAudioService>()
@@ -302,9 +320,9 @@ object AnkiCardCreator {
             val tagList = tags.split(",").map { it.trim() }.filter { it.isNotBlank() }
 
             if (dupCheck || forceOpen) {
-                val targetDeckId = if (dupScope == "deck" && deck.isNotBlank()) {
+                val targetDeckId = if (dupScope == "deck" && effectiveDeck.isNotBlank()) {
                     try {
-                        bridge.getDeckId(deck)
+                        bridge.getDeckId(effectiveDeck)
                     } catch (e: Exception) {
                         null
                     }
@@ -328,7 +346,7 @@ object AnkiCardCreator {
                 }
             }
 
-            val noteId = bridge.addNote(deckName = deck, modelName = model, fields = fields, tags = tagList)
+            val noteId = bridge.addNote(deckName = effectiveDeck, modelName = effectiveModel, fields = fields, tags = tagList)
             com.canopus.chimareader.data.AnkiStatsStorage.addCard(context, type)
             if (syncOnCreate) bridge.triggerSync()
             AnkiResult.Success(noteId)
