@@ -2,7 +2,6 @@ package eu.kanade.tachiyomi.ui.reader
 
 import android.app.Application
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.SystemClock
 import androidx.annotation.ColorInt
@@ -14,6 +13,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import chimahon.ocr.OcrBitmapDecoder
 import eu.kanade.domain.base.BasePreferences
 import eu.kanade.domain.chapter.model.toDbChapter
 import eu.kanade.domain.manga.interactor.SetMangaViewerFlags
@@ -1370,17 +1370,14 @@ class ReaderViewModel @JvmOverloads constructor(
         if (readerPage == null || readerPage.status != Page.State.Ready) return null
 
         return try {
-            val inputStream = readerPage.stream?.invoke()
-            if (inputStream != null) {
+            readerPage.stream?.invoke()?.use { inputStream ->
                 val bytes = inputStream.readBytes()
                 if (bytes.isNotEmpty()) {
-                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                    OcrBitmapDecoder.decode(bytes)
                 } else {
                     null
                 }
-            } else {
-                null
-            }
+            } ?: null
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e) { "Failed to decode page image" }
             null

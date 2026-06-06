@@ -124,6 +124,7 @@ import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import eu.kanade.tachiyomi.ui.reader.model.ViewerChapters
 import eu.kanade.tachiyomi.ui.reader.viewer.ReaderPageImageView
+import chimahon.ocr.OcrBitmapDecoder
 import chimahon.util.ImageEncoder
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
@@ -2271,13 +2272,12 @@ class ReaderActivity : BaseActivity() {
         logcat(LogPriority.DEBUG) { "updateAnkiCardWithScreenshot: noteId=$noteId, bytesSize=${screenshotBytes.size}" }
 
         val processedBytes = try {
-            val bitmap = android.graphics.BitmapFactory.decodeByteArray(screenshotBytes, 0, screenshotBytes.size)
-            if (bitmap != null) {
+            val bitmap = OcrBitmapDecoder.decode(screenshotBytes)
+            try {
                 val result = ImageEncoder.encode(bitmap)
-                bitmap.recycle()
                 result.bytes
-            } else {
-                screenshotBytes
+            } finally {
+                bitmap.recycle()
             }
         } catch (e: Exception) {
             logcat(LogPriority.WARN, e) { "Failed to re-encode screenshot, using original bytes" }
