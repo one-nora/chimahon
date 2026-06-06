@@ -39,6 +39,7 @@ fun DictionaryEntryWebView(
     headerText: String = "",
     fontSize: Int = 16,
     showFrequencyHarmonic: Boolean = false,
+    showFrequencyAverage: Boolean = false,
     groupTerms: Boolean = true,
     activeProfile: chimahon.anki.AnkiProfile,
     existingExpressions: Set<String> = emptySet(),
@@ -96,13 +97,16 @@ fun DictionaryEntryWebView(
 
     val renderSignature = remember(
         results, styles, placeholder, isDark,
-        showFrequencyHarmonic, groupTerms, showPitchDiagram, showPitchNumber, showPitchText,
+        showFrequencyHarmonic, showFrequencyAverage, groupTerms,
+        showPitchDiagram, showPitchNumber, showPitchText,
         activeProfile, tabs, recursiveNavMode, wordAudioEnabled,
         effectiveWordAudioAutoplay, showNavigationButtons, groupPitches,
     ) {
         DictionaryRenderSignature(
             results = results, styles = styles, placeholder = placeholder, isDark = isDark,
-            showFrequencyHarmonic = showFrequencyHarmonic, groupTerms = groupTerms,
+            showFrequencyHarmonic = showFrequencyHarmonic,
+            showFrequencyAverage = showFrequencyAverage,
+            groupTerms = groupTerms,
             showPitchDiagram = showPitchDiagram, showPitchNumber = showPitchNumber,
             showPitchText = showPitchText, activeProfile = activeProfile, tabs = tabs,
             recursiveNavMode = recursiveNavMode, wordAudioEnabled = wordAudioEnabled,
@@ -120,7 +124,8 @@ fun DictionaryEntryWebView(
         val (configJson, entryJsons) = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
             val config = buildConfigPayload(
                 context, styles, emptyMap(), placeholder, isDark,
-                showFrequencyHarmonic, groupTerms, showPitchDiagram, showPitchNumber, showPitchText,
+                showFrequencyHarmonic, showFrequencyAverage, groupTerms,
+                showPitchDiagram, showPitchNumber, showPitchText,
                 effectiveWordAudioAutoplay, activeProfile, emptySet(), tabs, recursiveNavMode,
                 wordAudioEnabled = wordAudioEnabled,
                 showNavigationButtons = showNavigationButtons,

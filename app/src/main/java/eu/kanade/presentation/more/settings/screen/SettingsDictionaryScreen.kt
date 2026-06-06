@@ -406,6 +406,9 @@ object SettingsDictionaryScreen : SearchableSettings {
         val showFreqHarmonicPref = dictionaryPreferences.showFrequencyHarmonic()
         val showFreqHarmonic by showFreqHarmonicPref.collectAsState()
 
+        val showFreqAveragePref = dictionaryPreferences.showFrequencyAverage()
+        val showFreqAverage by showFreqAveragePref.collectAsState()
+
         val groupTermsPref = dictionaryPreferences.groupTerms()
         val groupTerms by groupTermsPref.collectAsState()
 
@@ -717,10 +720,38 @@ object SettingsDictionaryScreen : SearchableSettings {
                     title = "Paginated scrolling",
                     subtitle = "Scroll by page-sized steps instead of smooth scrolling",
                 ),
-                Preference.PreferenceItem.SwitchPreference(
-                    preference = showFreqHarmonicPref,
-                    title = stringResource(MR.strings.pref_dict_show_frequency_harmonic),
-                    subtitle = stringResource(MR.strings.pref_dict_show_frequency_harmonic_summary),
+                Preference.PreferenceItem.CustomPreference(
+                    title = stringResource(MR.strings.pref_dict_frequency_display),
+                    content = {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Text(
+                                text = stringResource(MR.strings.pref_dict_frequency_display),
+                                style = MaterialTheme.typography.titleMedium,
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                FilterChip(
+                                    selected = showFreqHarmonic,
+                                    onClick = { showFreqHarmonicPref.set(!showFreqHarmonic) },
+                                    label = { Text("Harmonic rank") },
+                                    modifier = Modifier.weight(1f),
+                                )
+                                FilterChip(
+                                    selected = showFreqAverage,
+                                    onClick = { showFreqAveragePref.set(!showFreqAverage) },
+                                    label = { Text(stringResource(MR.strings.pref_dict_show_frequency_average)) },
+                                    modifier = Modifier.weight(1f),
+                                )
+                            }
+                        }
+                    },
                 ),
                 Preference.PreferenceItem.SwitchPreference(
                     preference = dictionaryPreferences.groupPitches(),
@@ -1778,8 +1809,10 @@ object SettingsDictionaryScreen : SearchableSettings {
                     } else {
                         selectedDeck
                     }
+                    // Always ensure Lapis exists in AnkiDroid so it's in the dropdown
+                    val lapisModelName = bridge.ensureLapisModelName()
                     val ensuredModel = if (selectedModel.isBlank() || LapisPreset.isBundledModelName(selectedModel)) {
-                        bridge.ensureLapisModelName()
+                        lapisModelName
                     } else {
                         selectedModel
                     }

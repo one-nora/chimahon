@@ -1748,7 +1748,52 @@
     }
   }
 
-  function appendFrequenciesSection(body, frequencies, showHarmonic, harmonicRank) {
+  function collectFrequencyNumbers(frequencies) {
+    const numbers = [];
+    const seen = new Set();
+    for (const group of frequencies) {
+      if (seen.has(group.dictName)) continue;
+      seen.add(group.dictName);
+      const items = Array.isArray(group.frequencies) ? group.frequencies : [];
+      for (const item of items) {
+        if (item && item.value > 0) {
+          numbers.push(item.value);
+          break;
+        }
+      }
+    }
+    return numbers;
+  }
+
+  function formatFrequencyRank(value) {
+    if (!Number.isFinite(value) || value <= 0) return null;
+    const rounded = Math.round(value * 10) / 10;
+    return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+  }
+
+  function appendAverageFrequencyChip(section, frequencies, averageRank) {
+    let average = Number.isFinite(averageRank) && averageRank > 0 ? averageRank : null;
+    if (average === null) {
+      const numbers = collectFrequencyNumbers(frequencies);
+      if (numbers.length > 0) {
+        average = numbers.reduce((sum, num) => sum + num, 0) / numbers.length;
+      }
+    }
+
+    const averageText = formatFrequencyRank(average);
+    if (averageText !== null) {
+      const tag = createTagWithBody('avg', averageText, 'frequency');
+      tag.classList.add('frequency-group-item');
+      tag.dataset.details = 'Average';
+      const labelEl = tag.querySelector('.tag-label');
+      if (labelEl) {
+        labelEl.dataset.details = 'Average';
+      }
+      section.appendChild(tag);
+    }
+  }
+
+  function appendFrequenciesSection(body, frequencies, showHarmonic, showAverage, harmonicRank, averageRank) {
     if (frequencies.length === 0) return;
 
     const section = document.createElement('div');
@@ -1759,19 +1804,7 @@
     if (showHarmonic) {
       let harmonic = Number.isFinite(harmonicRank) && harmonicRank > 0 ? Math.floor(harmonicRank) : null;
       if (harmonic === null) {
-        const numbers = [];
-        const seen = new Set();
-        for (const group of frequencies) {
-          if (seen.has(group.dictName)) continue;
-          seen.add(group.dictName);
-          const items = Array.isArray(group.frequencies) ? group.frequencies : [];
-          for (const item of items) {
-            if (item && item.value > 0) {
-              numbers.push(item.value);
-              break;
-            }
-          }
-        }
+        const numbers = collectFrequencyNumbers(frequencies);
         if (numbers.length > 0) {
           const n = numbers.length;
           let reciprocalSum = 0;
@@ -1785,9 +1818,18 @@
       if (harmonic !== null) {
         const tag = createTagWithBody('freq', `harmonic: ${harmonic}`, 'frequency');
         section.appendChild(tag);
+      }
+      if (showAverage) {
+        appendAverageFrequencyChip(section, frequencies, averageRank);
+      }
+      if (section.childElementCount > 0) {
         body.appendChild(section);
       }
       return;
+    }
+
+    if (showAverage) {
+      appendAverageFrequencyChip(section, frequencies, averageRank);
     }
 
     // Default: show compact top-row chips like Yomitan frequency groups.
@@ -2174,7 +2216,7 @@
     }
   }
 
-  function renderEntry(result, mediaMap, showFrequencyHarmonic, existingExpressions, ankiEnabled, showPitchDiagram, showPitchNumber, showPitchText, groupTerms, ankiDupAction, collapseConfig) {
+  function renderEntry(result, mediaMap, showFrequencyHarmonic, showFrequencyAverage, existingExpressions, ankiEnabled, showPitchDiagram, showPitchNumber, showPitchText, groupTerms, ankiDupAction, collapseConfig) {
     const existingSet = Array.isArray(existingExpressions) ? existingExpressions : [];
     const article = document.createElement('article');
     article.className = 'entry';
@@ -2262,7 +2304,14 @@
     }
 
     const frequencies = result.term && Array.isArray(result.term.frequencies) ? result.term.frequencies : [];
-    appendFrequenciesSection(body, frequencies, showFrequencyHarmonic, result.term ? result.term.frequencyHarmonicRank : null);
+    appendFrequenciesSection(
+      body,
+      frequencies,
+      showFrequencyHarmonic,
+      showFrequencyAverage,
+      result.term ? result.term.frequencyHarmonicRank : null,
+      result.term ? result.term.frequencyAverageRank : null
+    );
 
     const pitches = result.term && Array.isArray(result.term.pitches) ? result.term.pitches : [];
     appendPitchesSection(body, pitches, reading, showPitchDiagram, showPitchNumber, showPitchText);
@@ -2273,10 +2322,10 @@
     return article;
   }
 
-  function renderSplitEntries(result, mediaMap, showFrequencyHarmonic, existingExpressions, ankiEnabled, showPitchDiagram, showPitchNumber, showPitchText, ankiDupAction, collapseConfig) {
+  function renderSplitEntries(result, mediaMap, showFrequencyHarmonic, showFrequencyAverage, existingExpressions, ankiEnabled, showPitchDiagram, showPitchNumber, showPitchText, ankiDupAction, collapseConfig) {
     const glossaries = (result.term && Array.isArray(result.term.glossaries)) ? result.term.glossaries : [];
     if (glossaries.length === 0) {
-      return [renderEntry(result, mediaMap, showFrequencyHarmonic, existingExpressions, ankiEnabled, showPitchDiagram, showPitchNumber, showPitchText, false, ankiDupAction, collapseConfig)];
+      return [renderEntry(result, mediaMap, showFrequencyHarmonic, showFrequencyAverage, existingExpressions, ankiEnabled, showPitchDiagram, showPitchNumber, showPitchText, false, ankiDupAction, collapseConfig)];
     }
 
     return glossaries.map((gloss) => {
@@ -2285,7 +2334,7 @@
           glossaries: [gloss]
         })
       });
-      return renderEntry(splitResult, mediaMap, showFrequencyHarmonic, existingExpressions, ankiEnabled, showPitchDiagram, showPitchNumber, showPitchText, false, ankiDupAction, collapseConfig);
+      return renderEntry(splitResult, mediaMap, showFrequencyHarmonic, showFrequencyAverage, existingExpressions, ankiEnabled, showPitchDiagram, showPitchNumber, showPitchText, false, ankiDupAction, collapseConfig);
     });
   }
 
@@ -2442,10 +2491,11 @@
           const diagram = payload.showPitchDiagram !== false;
           const number = payload.showPitchNumber !== false;
           const text = payload.showPitchText !== false;
+          const average = payload.showFrequencyAverage === true;
           if (groupTerms) {
-            fragment.appendChild(renderEntry(result, mediaMap, payload.showFrequencyHarmonic, existingExpressions, payload.ankiEnabled, diagram, number, text, groupTerms, payload.ankiDupAction, collapseConfig));
+            fragment.appendChild(renderEntry(result, mediaMap, payload.showFrequencyHarmonic, average, existingExpressions, payload.ankiEnabled, diagram, number, text, groupTerms, payload.ankiDupAction, collapseConfig));
           } else {
-            const articles = renderSplitEntries(result, mediaMap, payload.showFrequencyHarmonic, existingExpressions, payload.ankiEnabled, diagram, number, text, payload.ankiDupAction, collapseConfig);
+            const articles = renderSplitEntries(result, mediaMap, payload.showFrequencyHarmonic, average, existingExpressions, payload.ankiEnabled, diagram, number, text, payload.ankiDupAction, collapseConfig);
             articles.forEach(a => fragment.appendChild(a));
           }
         }

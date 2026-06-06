@@ -166,6 +166,7 @@ fun OcrLookupPopup(
     val ankiSyncOnCreate = activeProfile.ankiSyncOnCreate
 
     val showFreqHarmonic by dictionaryPreferences.showFrequencyHarmonic().collectAsState()
+    val showFreqAverage by dictionaryPreferences.showFrequencyAverage().collectAsState()
     val groupTerms by dictionaryPreferences.groupTerms().collectAsState()
     val showPitchDiagram by dictionaryPreferences.showPitchDiagram().collectAsState()
     val showPitchNumber by dictionaryPreferences.showPitchNumber().collectAsState()
@@ -702,6 +703,7 @@ fun OcrLookupPopup(
                     headerText = lookupString.take(20) + if (lookupString.length > 20) "…" else "",
                     fontSize = popupFontSizePref,
                     showFrequencyHarmonic = showFreqHarmonic,
+                    showFrequencyAverage = showFreqAverage,
                     groupTerms = groupTerms,
                     showPitchDiagram = showPitchDiagram,
                     showPitchNumber = showPitchNumber,

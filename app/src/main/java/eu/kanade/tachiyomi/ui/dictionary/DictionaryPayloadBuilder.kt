@@ -26,6 +26,7 @@ internal data class DictionaryRenderSignature(
     val placeholder: String,
     val isDark: Boolean,
     val showFrequencyHarmonic: Boolean,
+    val showFrequencyAverage: Boolean,
     val groupTerms: Boolean,
     val showPitchDiagram: Boolean,
     val showPitchNumber: Boolean,
@@ -85,6 +86,7 @@ private fun buildResultEntryJson(result: LookupResult, index: Int, priorityMap: 
                 }
             }
             harmonicRank(frequencies)?.let { put("frequencyHarmonicRank", it) }
+            averageRank(frequencies)?.let { put("frequencyAverageRank", it) }
             putJsonArray("pitches") {
                 val allPitches = pitches.toTypedArray()
                 val priorityTitles = priorityMap.entries.sortedBy { it.value }.map { it.key }
@@ -158,6 +160,7 @@ internal fun buildConfigPayload(
     placeholder: String,
     isDark: Boolean,
     showFrequencyHarmonic: Boolean,
+    showFrequencyAverage: Boolean,
     groupTerms: Boolean,
     showPitchDiagram: Boolean,
     showPitchNumber: Boolean,
@@ -184,6 +187,7 @@ internal fun buildConfigPayload(
     put("placeholder", placeholder)
     put("isDark", isDark)
     put("showFrequencyHarmonic", showFrequencyHarmonic)
+    put("showFrequencyAverage", showFrequencyAverage)
     put("groupTerms", groupTerms)
     put("showPitchDiagram", showPitchDiagram)
     put("showPitchNumber", showPitchNumber)
@@ -287,15 +291,25 @@ private fun frequencyDisplayText(group: chimahon.FrequencyEntry): String =
         .joinToString(", ")
 
 private fun harmonicRank(frequencies: List<chimahon.FrequencyEntry>): Int? {
-    val seen = HashSet<String>()
-    val values = frequencies.mapNotNull { group ->
-        if (!seen.add(group.dictName)) return@mapNotNull null
-        group.frequencies.firstOrNull { it.value > 0 }?.value
-    }
+    val values = uniqueFrequencyValues(frequencies)
     if (values.isEmpty()) return null
     val reciprocalSum = values.sumOf { 1.0 / it }
     if (reciprocalSum <= 0.0) return null
     return kotlin.math.floor(values.size / reciprocalSum).toInt()
+}
+
+private fun averageRank(frequencies: List<chimahon.FrequencyEntry>): Double? {
+    val values = uniqueFrequencyValues(frequencies)
+    if (values.isEmpty()) return null
+    return values.average()
+}
+
+private fun uniqueFrequencyValues(frequencies: List<chimahon.FrequencyEntry>): List<Int> {
+    val seen = HashSet<String>()
+    return frequencies.mapNotNull { group ->
+        if (!seen.add(group.dictName)) return@mapNotNull null
+        group.frequencies.firstOrNull { it.value > 0 }?.value
+    }
 }
 
 private fun LookupResult.withOrderedDictionaries(priorityMap: Map<String, Int>): LookupResult {

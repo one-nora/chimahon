@@ -39,7 +39,7 @@ object LapisPreset {
         "ExpressionAudio" to "{${Marker.AUDIO}}",
         "SelectionText" to "{${Marker.POPUP_SELECTION_TEXT}}",
         "MainDefinition" to "{${Marker.SELECTED_GLOSSARY}}",
-        "Sentence" to "{${Marker.SENTENCE_BOLD}}",
+        "Sentence" to "{${Marker.SENTENCE}}",
         "Picture" to "{${Marker.SCREENSHOT}}",
         "Glossary" to "{${Marker.GLOSSARY}}",
         "IsWordAndSentenceCard" to "x",
