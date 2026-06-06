@@ -1839,8 +1839,6 @@ class ReaderViewModel @JvmOverloads constructor(
         chapter: Chapter,
         source: Source,
     ): MokuroChapterData? {
-        if (source.isLocal() == false) return null
-
         val chapterId = chapter.id ?: return null
 
         mokuroChapterCache[chapterId]?.let { return it }
@@ -1852,16 +1850,35 @@ class ReaderViewModel @JvmOverloads constructor(
         return mutex.withLock {
             mokuroChapterCache[chapterId]?.let { return@withLock it }
 
-            val parts = chapter.url.split('/', limit = 2)
-            if (parts.size != 2) return@withLock null
-            val (mangaDirName, chapterName) = parts
+            val (chapterFile, baseDir, chapterName) = if (source.isLocal()) {
+                val parts = chapter.url.split('/', limit = 2)
+                if (parts.size != 2) return@withLock null
+                val (mangaDirName, chapterName) = parts
 
-            val baseDir = localFileSystem.getBaseDirectory()
-                ?.findFile(mangaDirName)
-                ?: return@withLock null
+                val baseDir = localFileSystem.getBaseDirectory()
+                    ?.findFile(mangaDirName)
+                    ?: return@withLock null
 
-            val chapterFile = baseDir.findFile(chapterName)
-                ?: return@withLock null
+                val chapterFile = baseDir.findFile(chapterName)
+                    ?: return@withLock null
+
+                Triple(chapterFile, baseDir, chapterName)
+            } else {
+                val manga = state.value.manga ?: return@withLock null
+                val chapterFile = downloadProvider.findChapterDir(
+                    chapter.name,
+                    chapter.scanlator,
+                    chapter.url,
+                    manga.ogTitle,
+                    source,
+                ) ?: return@withLock null
+
+                Triple(
+                    chapterFile,
+                    chapterFile.parentFile ?: return@withLock null,
+                    chapterFile.name ?: return@withLock null,
+                )
+            }
 
             val isArchive = !chapterFile.isDirectory && (
                 chapterName.endsWith(".epub", ignoreCase = true) ||
@@ -2098,8 +2115,6 @@ class ReaderViewModel @JvmOverloads constructor(
         source: Source,
         pageIndex: Int,
     ): List<eu.kanade.tachiyomi.ui.reader.viewer.OcrTextBlock>? {
-        if (source.isLocal() == false) return null
-
         val chapterData = loadMokuroChapter(chapter, source) ?: return null
         return getMokuroBlocksForPage(chapterData, pageIndex)
     }
@@ -2126,14 +2141,21 @@ class ReaderViewModel @JvmOverloads constructor(
             }
         }
 
-        val siblingFile = parentDir.findFile("$mokuroBaseName.mokuro")
-        if (siblingFile != null && siblingFile.isFile == true) {
-            logcat { "Mokuro: found as sibling: $mokuroBaseName.mokuro" }
-            return siblingFile
+        mokuroBaseName.mokuroSidecarBaseNames().forEach { baseName ->
+            val siblingFile = parentDir.findFile("$baseName.mokuro")
+            if (siblingFile != null && siblingFile.isFile == true) {
+                logcat { "Mokuro: found as sibling: $baseName.mokuro" }
+                return siblingFile
+            }
         }
 
         logcat { "Mokuro: no .mokuro file found for $chapterName (tried inside folder and sibling)" }
         return null
+    }
+
+    private fun String.mokuroSidecarBaseNames(): List<String> {
+        val hashless = replace(Regex("_[A-Za-z0-9]{6}$"), "")
+        return if (hashless == this) listOf(this) else listOf(this, hashless)
     }
 
     private fun isImageExtension(name: String?): Boolean {
@@ -2163,7 +2185,16 @@ class ReaderViewModel @JvmOverloads constructor(
             } ?: chimahon.ocr.OcrLanguage.JAPANESE
         }
 
-        if (source.isLocal()) {
+        if (
+            source.isLocal() ||
+            downloadProvider.findChapterDir(
+                domainChapter.name,
+                domainChapter.scanlator,
+                domainChapter.url,
+                manga.ogTitle,
+                source,
+            ) != null
+        ) {
             tryLoadMokuroBlocks(manga, domainChapter, source, page.index)?.let { rawBlocks ->
                 val blocks = rawBlocks.map { it.copy(language = ocrLang.bcp47) }
                 ocrCacheMutex.withLock {
