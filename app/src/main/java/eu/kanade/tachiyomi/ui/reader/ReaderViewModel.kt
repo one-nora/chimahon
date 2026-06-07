@@ -100,6 +100,8 @@ import kotlinx.coroutines.sync.withLock
 import kotlin.math.min
 import logcat.LogPriority
 
+import mihon.core.archive.archiveReader
+import mihon.core.archive.epubReader
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import tachiyomi.core.common.preference.toggle
 import tachiyomi.core.common.storage.UniFileTempFileManager
@@ -1887,29 +1889,7 @@ class ReaderViewModel @JvmOverloads constructor(
             val mokuroFile = findMokuroFile(chapterFile, chapterName, baseDir, isArchive)
                 ?: return@withLock null
 
-            val imageFiles = if (chapterFile.isDirectory) {
-                chapterFile.listFiles()
-                    ?.filter { it.isFile && isImageExtension(it.name) }
-                    ?.sortedWith { f1, f2 ->
-                        f1.name.orEmpty().compareToCaseInsensitiveNaturalOrder(f2.name.orEmpty())
-                    }
-                    ?.map { f ->
-                        chimahon.ocr.ImageFileInfo(
-                            name = f.name.orEmpty(),
-                            relativePath = f.name.orEmpty(),
-                            basename = f.name?.substringBeforeLast('.') ?: "",
-                        )
-                    }
-                    .orEmpty()
-            } else {
-                listOf(
-                    chimahon.ocr.ImageFileInfo(
-                        name = chapterName,
-                        relativePath = chapterName,
-                        basename = chapterName.substringBeforeLast('.'),
-                    ),
-                )
-            }
+            val imageFiles = resolveChapterImageFiles(chapterFile, chapterName)
 
             val content = mokuroFile.openInputStream().use { it.bufferedReader().readText() }
             val mokuro = chimahon.ocr.Mokuro.parseMokuro(content)
@@ -2077,36 +2057,61 @@ class ReaderViewModel @JvmOverloads constructor(
         val chapterFile = mangaDir.findFile(chapterName)
             ?: return emptyList()
 
+        return resolveChapterImageFiles(chapterFile, chapterName)
+    }
+
+    private fun resolveChapterImageFiles(
+        chapterFile: com.hippo.unifile.UniFile,
+        chapterName: String,
+    ): List<chimahon.ocr.ImageFileInfo> {
         if (chapterFile.isDirectory) {
             return chapterFile.listFiles()
                 ?.filter { it.isFile && isImageExtension(it.name) }
                 ?.sortedWith { f1, f2 ->
                     f1.name.orEmpty().compareToCaseInsensitiveNaturalOrder(f2.name.orEmpty())
                 }
-                ?.map { f ->
-                    chimahon.ocr.ImageFileInfo(
-                        name = f.name.orEmpty(),
-                        relativePath = f.name.orEmpty(),
-                        basename = f.name?.substringBeforeLast('.') ?: "",
-                    )
-                }
+                ?.map { f -> f.name.orEmpty().toMokuroImageFileInfo() }
                 .orEmpty()
         }
 
-        val isArchive = chapterName.endsWith(".epub", ignoreCase = true) ||
-            Archive.isSupported(chapterFile)
+        if (chapterName.endsWith(".epub", ignoreCase = true)) {
+            return runCatching {
+                chapterFile.epubReader(application).use { epub ->
+                    epub.getImagesFromPages().map { it.toMokuroImageFileInfo() }
+                }
+            }.getOrElse { e ->
+                logcat(LogPriority.ERROR, e) { "Mokuro: failed to read EPUB image list for $chapterName" }
+                emptyList()
+            }
+        }
 
-        if (isArchive) {
-            return listOf(
-                chimahon.ocr.ImageFileInfo(
-                    name = chapterName,
-                    relativePath = chapterName,
-                    basename = chapterName.substringBeforeLast('.'),
-                ),
-            )
+        if (Archive.isSupported(chapterFile)) {
+            return runCatching {
+                chapterFile.archiveReader(application).use { reader ->
+                    reader.useEntries { entries ->
+                        entries
+                            .filter { it.isFile && ImageUtil.isImage(it.name) { reader.getInputStream(it.name)!! } }
+                            .sortedWith { f1, f2 -> f1.name.compareToCaseInsensitiveNaturalOrder(f2.name) }
+                            .map { it.name.toMokuroImageFileInfo() }
+                            .toList()
+                    }
+                }
+            }.getOrElse { e ->
+                logcat(LogPriority.ERROR, e) { "Mokuro: failed to read archive image list for $chapterName" }
+                emptyList()
+            }
         }
 
         return emptyList()
+    }
+
+    private fun String.toMokuroImageFileInfo(): chimahon.ocr.ImageFileInfo {
+        val fileName = substringAfterLast('/').substringAfterLast('\\')
+        return chimahon.ocr.ImageFileInfo(
+            name = fileName,
+            relativePath = this,
+            basename = fileName.substringBeforeLast('.'),
+        )
     }
 
     private suspend fun tryLoadMokuroBlocks(
