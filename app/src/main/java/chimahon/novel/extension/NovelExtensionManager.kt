@@ -1,10 +1,15 @@
 package chimahon.novel.extension
 
 import android.content.Context
+import chimahon.novel.extension.ireader.IReaderApkLoader
 import chimahon.novel.extension.js.JsNovelSource
 import chimahon.novel.extension.js.JsSourceEngine
 import chimahon.novel.extension.js.JsSourceMetadata
+import chimahon.source.ireader.adapter.IReaderSourceAdapter
 import chimahon.source.ireader.source.CatalogSource
+import eu.kanade.domain.extension.interactor.TrustExtension
+import eu.kanade.tachiyomi.network.NetworkHelper
+import eu.kanade.tachiyomi.sourcenovel.NovelSource
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -18,6 +23,8 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 import java.io.File
 
 class NovelExtensionManager(private val context: Context) {
@@ -25,15 +32,34 @@ class NovelExtensionManager(private val context: Context) {
     private val repoManager = ExtensionRepositoryManager(context)
     private var jsEngine: JsSourceEngine? = null
     private val json = Json { ignoreUnknownKeys = true; prettyPrint = true }
+    private val ireaderLoader by lazy {
+        IReaderApkLoader(
+            context = context,
+            okHttpClient = Injekt.get<NetworkHelper>().client,
+            trustExtension = Injekt.get<TrustExtension>(),
+        )
+    }
 
     private val _loadedSources = MutableStateFlow<List<CatalogSource>>(emptyList())
     val loadedSources: StateFlow<List<CatalogSource>> = _loadedSources.asStateFlow()
+
+    private val _loadedNovelSources = MutableStateFlow<List<NovelSource>>(emptyList())
+    val loadedNovelSources: StateFlow<List<NovelSource>> = _loadedNovelSources.asStateFlow()
 
     private val _availableExtensions = MutableStateFlow<List<CatalogRemote>>(emptyList())
     val availableExtensions: StateFlow<List<CatalogRemote>> = _availableExtensions.asStateFlow()
 
     private val _installedExtensions = MutableStateFlow<List<InstalledExtension>>(emptyList())
     val installedExtensions: StateFlow<List<InstalledExtension>> = _installedExtensions.asStateFlow()
+
+    private val _installedNovelExtensions = MutableStateFlow<List<NovelExtension.Installed>>(emptyList())
+    val installedNovelExtensions: StateFlow<List<NovelExtension.Installed>> = _installedNovelExtensions.asStateFlow()
+
+    private val _availableNovelExtensions = MutableStateFlow<List<NovelExtension.Available>>(emptyList())
+    val availableNovelExtensions: StateFlow<List<NovelExtension.Available>> = _availableNovelExtensions.asStateFlow()
+
+    private val _untrustedExtensions = MutableStateFlow<List<NovelExtension.Untrusted>>(emptyList())
+    val untrustedExtensions: StateFlow<List<NovelExtension.Untrusted>> = _untrustedExtensions.asStateFlow()
 
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
@@ -51,6 +77,7 @@ class NovelExtensionManager(private val context: Context) {
                 // Phase 1: Load stubs from cached metadata (instant, no JS engine)
                 val stubs = loadStubSources()
                 _loadedSources.value = stubs
+                _loadedNovelSources.value = stubs.map { IReaderSourceAdapter(it) }
 
                 // Phase 2: Initialize JS engine on main thread
                 val engine = JsSourceEngine(context)
@@ -64,7 +91,10 @@ class NovelExtensionManager(private val context: Context) {
                     val fullSources = loadFullSourcesParallel(engine)
                     if (fullSources.isNotEmpty()) {
                         _loadedSources.value = fullSources
+                        publishLoadedNovelSources(fullSources)
                     }
+                } else {
+                    publishLoadedNovelSources(stubs)
                 }
 
                 refreshAvailableExtensions()
@@ -157,6 +187,7 @@ class NovelExtensionManager(private val context: Context) {
         try {
             val extensions = repoManager.fetchAvailableExtensions()
             _availableExtensions.value = extensions
+            _availableNovelExtensions.value = extensions.map { it.toAvailableNovelExtension() }
         } catch (e: Exception) {
             android.util.Log.e("ExtensionManager", "Failed to refresh extensions", e)
         }
@@ -171,11 +202,45 @@ class NovelExtensionManager(private val context: Context) {
             if (engine != null) {
                 val sources = loadFullSourcesParallel(engine)
                 _loadedSources.value = sources
+                publishLoadedNovelSources(sources)
             } else {
                 val stubs = loadStubSources()
                 _loadedSources.value = stubs
+                publishLoadedNovelSources(stubs)
             }
         }
+    }
+
+    private fun publishLoadedNovelSources(jsSources: List<CatalogSource>) {
+        val jsNovelSources = jsSources.map { IReaderSourceAdapter(it) }
+        val ireaderResults = ireaderLoader.loadInstalled(
+            files = _installedExtensions.value
+                .filter { it.isEnabled && it.repositoryType == "IREADER" }
+                .map { File(it.filePath) },
+        )
+        val ireaderInstalled = ireaderResults.filterIsInstance<IReaderApkLoader.LoadResult.Success>().map { it.extension }
+        val ireaderUntrusted = ireaderResults.filterIsInstance<IReaderApkLoader.LoadResult.Untrusted>().map { it.extension }
+
+        val jsInstalled = _installedExtensions.value
+            .filter { it.isEnabled && it.repositoryType == "LNREADER" }
+            .map { ext ->
+                NovelExtension.Installed(
+                    name = ext.name,
+                    pkgName = ext.id,
+                    versionName = ext.version,
+                    versionCode = ext.version.replace(".", "").toLongOrNull() ?: 0L,
+                    lang = ext.lang,
+                    isNsfw = false,
+                    repositoryType = ext.repositoryType,
+                    sources = jsNovelSources.filter { it.name == ext.name || it.lang == ext.lang },
+                    isShared = false,
+                )
+            }
+
+        _installedNovelExtensions.value = jsInstalled + ireaderInstalled
+        _untrustedExtensions.value = ireaderUntrusted
+        _loadedNovelSources.value = (jsNovelSources + ireaderInstalled.flatMap { it.sources })
+            .distinctBy { it.id }
     }
 
     private suspend fun loadJsSource(extension: InstalledExtension, engine: JsSourceEngine): JsNovelSource? {
@@ -209,7 +274,9 @@ class NovelExtensionManager(private val context: Context) {
                 result.onSuccess { filePath ->
                     // Extract and cache metadata immediately
                     val file = File(filePath)
-                    extractAndCacheMetadata(file)
+                    if (entry.repositoryType == "LNREADER") {
+                        extractAndCacheMetadata(file)
+                    }
                     loadInstalledExtensions()
                 }
                 result.onFailure { error ->
@@ -219,6 +286,10 @@ class NovelExtensionManager(private val context: Context) {
                 _isLoading.value = false
             }
         }
+    }
+
+    fun installExtension(extension: NovelExtension.Available) {
+        _availableExtensions.value.find { it.pkgName == extension.pkgName }?.let(::installExtension)
     }
 
     fun uninstallExtension(extensionId: String) {
@@ -236,6 +307,13 @@ class NovelExtensionManager(private val context: Context) {
         }
     }
 
+    fun trustExtension(extension: NovelExtension.Untrusted) {
+        scope.launch {
+            Injekt.get<TrustExtension>().trust(extension.pkgName, extension.versionCode, extension.signatureHash)
+            loadInstalledExtensions()
+        }
+    }
+
     fun getSource(sourceId: Long): CatalogSource? {
         return _loadedSources.value.find { it.id == sourceId }
     }
@@ -248,6 +326,25 @@ class NovelExtensionManager(private val context: Context) {
         jsEngine?.destroy()
         jsEngine = null
     }
+}
+
+private fun CatalogRemote.toAvailableNovelExtension(): NovelExtension.Available {
+    return NovelExtension.Available(
+        name = name,
+        pkgName = pkgName,
+        versionName = versionName,
+        versionCode = versionCode.toLong(),
+        lang = lang,
+        isNsfw = nsfw,
+        repositoryType = repositoryType,
+        sourceId = sourceId,
+        description = description,
+        pkgUrl = pkgUrl,
+        iconUrl = iconUrl,
+        jarUrl = jarUrl,
+        repoName = repoName,
+        repoUrl = repoUrl,
+    )
 }
 
 /**

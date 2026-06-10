@@ -68,9 +68,10 @@ class ExtensionRepositoryManager(private val context: Context) {
 
     suspend fun downloadExtension(entry: CatalogRemote): Result<String> {
         return try {
-            val downloadUrl = entry.jarUrl.takeIf { it.isNotBlank() }
-                ?: entry.pkgUrl.takeIf { it.isNotBlank() }
-                ?: return Result.failure(Exception("No download URL"))
+            val downloadUrl = when (entry.repositoryType) {
+                "IREADER" -> entry.pkgUrl.takeIf { it.isNotBlank() } ?: entry.jarUrl.takeIf { it.isNotBlank() }
+                else -> entry.jarUrl.takeIf { it.isNotBlank() } ?: entry.pkgUrl.takeIf { it.isNotBlank() }
+            } ?: return Result.failure(Exception("No download URL"))
 
             val request = Request.Builder()
                 .url(downloadUrl)
@@ -144,7 +145,7 @@ class ExtensionRepositoryManager(private val context: Context) {
             .digest(pkgName.toByteArray())
             .joinToString("") { "%02x".format(it) }
             .take(8)
-        val ext = if (repoType == "LNREADER") "js" else "jar"
+        val ext = if (repoType == "LNREADER") "js" else "apk"
         return "ext_${hash}.$ext"
     }
 }

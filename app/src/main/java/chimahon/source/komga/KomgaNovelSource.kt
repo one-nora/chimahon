@@ -12,7 +12,6 @@ import eu.kanade.tachiyomi.sourcenovel.model.SNChapter
 import eu.kanade.tachiyomi.sourcenovel.model.SNNovel
 import kotlinx.serialization.json.Json
 import okhttp3.Credentials
-import okhttp3.Headers
 import okhttp3.OkHttpClient
 import okhttp3.Response
 import uy.kohesive.injekt.Injekt
@@ -35,17 +34,6 @@ class KomgaNovelSource(
     override val supportsLatest: Boolean get() = true
 
     private val baseUrl: String get() = server.baseUrl.trimEnd('/')
-
-    private val authHeaders: Headers
-        get() {
-            return if (!server.apiKey.isNullOrBlank()) {
-                Headers.Builder().add("X-API-Key", server.apiKey!!).build()
-            } else if (!server.username.isNullOrBlank()) {
-                Headers.Builder().add("Authorization", Credentials.basic(server.username!!, server.apiKey ?: "")).build()
-            } else {
-                Headers.Builder().build()
-            }
-        }
 
     private val client: OkHttpClient
         get() {
@@ -127,9 +115,9 @@ class KomgaNovelSource(
             .sortedByDescending { it.chapter_number }
     }
 
-    private fun parseDate(dateStr: String): Long = runCatching { threadLocalDate.get().parse(dateStr)?.time ?: 0L }.getOrDefault(0L)
+    private fun parseDate(dateStr: String): Long = runCatching { threadLocalDate.get()!!.parse(dateStr)?.time ?: 0L }.getOrDefault(0L)
 
-    private fun parseDateTime(dateStr: String): Long = runCatching { threadLocalDateTime.get().parse(dateStr)?.time ?: 0L }.getOrDefault(0L)
+    private fun parseDateTime(dateStr: String): Long = runCatching { threadLocalDateTime.get()!!.parse(dateStr)?.time ?: 0L }.getOrDefault(0L)
 
     companion object {
         private val threadLocalDate = ThreadLocal.withInitial {

@@ -14,9 +14,7 @@ import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import kotlinx.serialization.json.Json
 import okhttp3.Credentials
-import okhttp3.Headers
 import okhttp3.OkHttpClient
-import okhttp3.Request
 import okhttp3.Response
 import java.security.MessageDigest
 import java.text.SimpleDateFormat
@@ -54,15 +52,6 @@ class KomgaSource(
             }
             return builder.build()
         }
-
-    private val authHeaders: Headers
-        get() = Headers.Builder().apply {
-            add("User-Agent", network.defaultUserAgentProvider())
-            if (!server.apiKey.isNullOrBlank()) add("X-API-Key", server.apiKey!!)
-            else if (!server.username.isNullOrBlank()) {
-                add("Authorization", Credentials.basic(server.username!!, ""))
-            }
-        }.build()
 
     // ===== Manga CatalogueSource Implementation =====
 
@@ -137,13 +126,17 @@ class KomgaSource(
             .sortedByDescending { it.chapter_number }
     }
 
-    private fun parseDate(dateStr: String): Long = runCatching { formatterDate.parse(dateStr)?.time ?: 0L }.getOrDefault(0L)
+    private fun parseDate(dateStr: String): Long = runCatching { threadLocalDate.get()!!.parse(dateStr)?.time ?: 0L }.getOrDefault(0L)
 
-    private fun parseDateTime(dateStr: String): Long = runCatching { formatterDateTime.parse(dateStr)?.time ?: 0L }.getOrDefault(0L)
+    private fun parseDateTime(dateStr: String): Long = runCatching { threadLocalDateTime.get()!!.parse(dateStr)?.time ?: 0L }.getOrDefault(0L)
 
     companion object {
-        private val formatterDate = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }
-        private val formatterDateTime = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }
+        private val threadLocalDate = ThreadLocal.withInitial {
+            SimpleDateFormat("yyyy-MM-dd", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }
+        }
+        private val threadLocalDateTime = ThreadLocal.withInitial {
+            SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }
+        }
 
         fun generateId(server: NovelServer): Long {
             val key = "komga:${server.baseUrl}:${server.name}"

@@ -11,9 +11,11 @@ import eu.kanade.tachiyomi.sourcenovel.model.ChapterContent
 import eu.kanade.tachiyomi.sourcenovel.model.NovelPage
 import eu.kanade.tachiyomi.sourcenovel.model.SNChapter
 import eu.kanade.tachiyomi.sourcenovel.model.SNNovel
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.encodeToJsonElement
-import okhttp3.Credentials
+import kotlinx.serialization.json.put
 import okhttp3.Headers
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -39,17 +41,16 @@ class KavitaNovelSource(
     override val supportsLatest: Boolean get() = true
 
     private val baseUrl: String get() = server.baseUrl.trimEnd('/')
+    private var authToken: String? = null
 
     private val authHeaders: Headers
-        get() {
-            val builder = Headers.Builder()
+        get() = Headers.Builder().apply {
             if (!server.apiKey.isNullOrBlank()) {
-                builder.add("Authorization", "Bearer ${server.apiKey}")
-            } else if (!server.username.isNullOrBlank()) {
-                builder.add("Authorization", Credentials.basic(server.username, server.apiKey ?: ""))
+                add("Authorization", "Bearer ${server.apiKey}")
+            } else if (authToken != null) {
+                add("Authorization", "Bearer $authToken")
             }
-            return builder.build()
-        }
+        }.build()
 
     private val client: OkHttpClient
         get() {
@@ -60,16 +61,46 @@ class KavitaNovelSource(
                 }
             } else if (!server.username.isNullOrBlank()) {
                 builder.addInterceptor { chain ->
-                    chain.proceed(chain.request().newBuilder().header("Authorization", Credentials.basic(server.username, server.apiKey ?: "")).build())
+                    val req = chain.request()
+                    if (req.url.encodedPath.endsWith("/login", ignoreCase = true)) {
+                        chain.proceed(req)
+                    } else {
+                        val token = authToken ?: runBlocking { login() }
+                        chain.proceed(req.newBuilder().header("Authorization", "Bearer $token").build())
+                    }
                 }
             }
             return builder.build()
         }
 
+    private suspend fun login(): String {
+        val body = buildJsonObject {
+            put("username", server.username ?: "")
+            put("password", server.apiKey ?: "")
+        }.toString()
+        val response = network.client.newCall(
+            POST(
+                "$baseUrl/api/Account/login",
+                headers = Headers.Builder().add("Content-Type", "application/json").build(),
+                body = body.toRequestBody("application/json".toMediaType()),
+            ),
+        ).awaitSuccess()
+        val token = json.decodeFromString<KavitaLoginResponse>(response.body.string()).token
+        authToken = token
+        return token
+    }
+
     override suspend fun getNovelDetails(novel: SNNovel): SNNovel {
         val seriesId = novel.url.substringAfterLast("/")
         val response = client.newCall(GET("$baseUrl/api/series/metadata?seriesId=$seriesId")).awaitSuccess()
-        return parseNovelDetails(response)
+        return parseNovelDetails(response).let { details ->
+            // Preserve original title if the detail DTO doesn't have one
+            if (details.title.isBlank() && novel.title.isNotBlank()) {
+                details.copy().also { it.title = novel.title }
+            } else {
+                details
+            }
+        }
     }
 
     override suspend fun getChapterList(novel: SNNovel): List<SNChapter> {
@@ -166,7 +197,7 @@ class KavitaNovelSource(
     }
 
     private fun parseDateTime(dateStr: String): Long = runCatching {
-        threadLocalFormatter.get().parse(dateStr)?.time ?: 0L
+        threadLocalFormatter.get()!!.parse(dateStr)?.time ?: 0L
     }.getOrDefault(0L)
 
     companion object {

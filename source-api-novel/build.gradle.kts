@@ -16,6 +16,10 @@ kotlin {
                 api(libs.injekt)
                 api(libs.rxjava)
                 api(libs.jsoup)
+                api(libs.ksoup)
+                api(libs.ktor.client.core)
+                api(libs.ktor.client.content.negotiation)
+                api(libs.ktor.serialization.kotlinx.json)
                 api(projects.sourceApi)
                 api(projects.i18n)
                 api(kotlinx.reflect)
@@ -27,6 +31,7 @@ kotlin {
             dependencies {
                 implementation(projects.core.common)
                 api(libs.preferencektx)
+                api(libs.ktor.client.okhttp)
                 implementation(kotlinx.coroutines.android)
                 implementation(project.dependencies.platform(kotlinx.coroutines.bom))
             }

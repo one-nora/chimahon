@@ -42,7 +42,9 @@ data class CatalogRemote(
     val iconUrl: String,
     val nsfw: Boolean,
     val jarUrl: String,
-    val repositoryType: String
+    val repositoryType: String,
+    val repoUrl: String = "",
+    val repoName: String = "",
 )
 
 class CatalogGithubApi(
@@ -52,7 +54,8 @@ class CatalogGithubApi(
 
     companion object {
         val DEFAULT_REPOS = listOf(
-            "https://raw.githubusercontent.com/kazemcodes/lnreader-plugins-unminified/refs/heads/repo/plugins/plugins.min.json"
+            "https://raw.githubusercontent.com/IReaderorg/IReader-extensions/repov2/index.min.json",
+            "https://raw.githubusercontent.com/kazemcodes/lnreader-plugins-unminified/refs/heads/repo/plugins/plugins.min.json",
         )
     }
 
@@ -122,7 +125,9 @@ class CatalogGithubApi(
                 iconUrl = iconUrl,
                 nsfw = catalog.nsfw,
                 jarUrl = jarUrl,
-                repositoryType = "IREADER"
+                repositoryType = "IREADER",
+                repoUrl = repoUrl,
+                repoName = "IReader",
             )
         }
     }
@@ -148,7 +153,9 @@ class CatalogGithubApi(
                 iconUrl = iconUrl,
                 nsfw = false,
                 jarUrl = plugin.url,
-                repositoryType = "LNREADER"
+                repositoryType = "LNREADER",
+                repoUrl = repoUrl,
+                repoName = "LNReader",
             )
         }
     }

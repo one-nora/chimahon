@@ -61,11 +61,21 @@ import tachiyomi.presentation.core.components.material.Scaffold
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.screens.EmptyScreen
 import tachiyomi.presentation.core.screens.LoadingScreen
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 
 data class NovelDetailScreen(
     private val novel: SNNovel,
     private val source: NovelSource,
 ) : Screen() {
+
+    companion object {
+        fun fromSourceId(novel: SNNovel, sourceId: Long): NovelDetailScreen? {
+            val sourceManager = Injekt.get<chimahon.novel.manager.NovelSourceManager>()
+            val source = sourceManager.getNovelSource(sourceId) ?: return null
+            return NovelDetailScreen(novel, source)
+        }
+    }
 
     @Composable
     override fun Content() {
@@ -302,7 +312,8 @@ private fun openChapter(
                 )
                 NovelReaderActivity.launch(context, bookDir)
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            android.widget.Toast.makeText(context, "Failed to open chapter: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
         }
     }
 }

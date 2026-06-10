@@ -57,6 +57,7 @@ class NovelDetailScreenModel(
 ) : StateScreenModel<NovelDetailState>(NovelDetailState(isLoading = true)) {
 
     private var cachedDbNovel: Novel? = null
+    private var cachedChapters: List<SNChapter>? = null
 
     init {
         loadDetails()
@@ -75,6 +76,7 @@ class NovelDetailScreenModel(
             try {
                 val details = source.getNovelDetails(novel)
                 val chapters = source.getChapterList(novel)
+                cachedChapters = chapters
 
                 val items = chapters.mapIndexed { index, ch ->
                     NovelChapterItem(index = index, snChapter = ch)
@@ -131,7 +133,7 @@ class NovelDetailScreenModel(
         val domainNovel = Novel.fromSourceNovel(novel, source.id)
         val novelId = novelRepository.insert(domainNovel)
 
-        val sourceChapters = source.getChapterList(novel)
+        val sourceChapters = cachedChapters ?: source.getChapterList(novel)
         val dbChapters = sourceChapters.mapIndexed { index, snCh ->
             NovelChapter.create().copy(
                 novelId = novelId,
@@ -252,9 +254,11 @@ class NovelDetailScreenModel(
     }
 
     private suspend fun syncBookmarkToDb() {
-        val sourceChapters = try {
-            source.getChapterList(mutableState.value.novel)
-        } catch (_: Exception) { return }
+        val sourceChapters = cachedChapters ?: run {
+            try {
+                source.getChapterList(mutableState.value.novel)
+            } catch (_: Exception) { return }
+        }
 
         val bookId = "src_${source.id}_${mutableState.value.novel.title.hashCode()}"
         val context: Context = Injekt.get()

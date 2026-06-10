@@ -1,100 +1,142 @@
 package chimahon.novel.ui.extension
 
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Extension
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import chimahon.novel.extension.CatalogRemote
-import chimahon.novel.extension.InstalledExtension
-import chimahon.novel.extension.NovelExtensionManager
+import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
+import chimahon.novel.extension.NovelExtension
+import chimahon.novel.extension.NovelExtensionManager
+import kotlinx.coroutines.launch
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
-class NovelExtensionScreen : cafe.adriel.voyager.core.screen.Screen {
+/**
+ * Novel extension management screen.
+ */
+class NovelExtensionScreen : Screen {
     @Composable
     override fun Content() {
-        val navigator = LocalNavigator.currentOrThrow
-        val extensionManager = remember { Injekt.get<NovelExtensionManager>() }
-        NovelExtensionContent(
-            extensionManager = extensionManager,
-            onNavigateBack = { navigator.pop() }
-        )
+        NovelExtensionContent()
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun NovelExtensionContent(
-    extensionManager: NovelExtensionManager,
-    onNavigateBack: () -> Unit
+private fun NovelExtensionContent(
+    extensionManager: NovelExtensionManager = Injekt.get(),
 ) {
-    var selectedTab by remember { mutableStateOf(0) }
-    val availableExtensions by extensionManager.availableExtensions.collectAsState()
-    val installedExtensions by extensionManager.installedExtensions.collectAsState()
+    val navigator = LocalNavigator.currentOrThrow
+    val scope = rememberCoroutineScope()
+    var selectedTab by remember { mutableIntStateOf(0) }
+
+    val availableExtensions by extensionManager.availableNovelExtensions.collectAsState()
+    val installedExtensions by extensionManager.installedNovelExtensions.collectAsState()
+    val untrustedExtensions by extensionManager.untrustedExtensions.collectAsState()
     val isLoading by extensionManager.isLoading.collectAsState()
 
     Scaffold(
         topBar = {
-            TopAppBar(
+            CenterAlignedTopAppBar(
                 title = { Text("Novel Extensions") },
                 navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Default.ArrowBack, "Back")
+                    IconButton(onClick = { navigator.pop() }) {
+                        Text("X")
                     }
                 },
                 actions = {
-                    IconButton(onClick = { extensionManager.loadInstalledExtensions() }) {
-                        Icon(Icons.Default.Refresh, "Refresh")
+                    IconButton(
+                        onClick = {
+                            extensionManager.loadInstalledExtensions()
+                            scope.launch { extensionManager.refreshAvailableExtensions() }
+                        },
+                    ) {
+                        Icon(Icons.Default.Refresh, contentDescription = "Refresh")
                     }
-                }
+                },
             )
-        }
-    ) { padding ->
+        },
+    ) { paddingValues ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
+                .padding(paddingValues),
         ) {
+            if (isLoading) {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            }
+
             TabRow(selectedTabIndex = selectedTab) {
                 Tab(
                     selected = selectedTab == 0,
                     onClick = { selectedTab = 0 },
-                    text = { Text("Available (${availableExtensions.size})") },
-                    icon = { Icon(Icons.Default.List, null) }
+                    text = { Text("Available") },
                 )
                 Tab(
                     selected = selectedTab == 1,
                     onClick = { selectedTab = 1 },
-                    text = { Text("Installed (${installedExtensions.size})") },
-                    icon = { Icon(Icons.Default.CheckCircle, null) }
+                    text = { Text("Installed") },
                 )
-            }
-
-            if (isLoading) {
-                LinearProgressIndicator(
-                    modifier = Modifier.fillMaxWidth()
+                Tab(
+                    selected = selectedTab == 2,
+                    onClick = { selectedTab = 2 },
+                    text = { Text("Untrusted") },
                 )
             }
 
             when (selectedTab) {
                 0 -> AvailableExtensionsList(
                     extensions = availableExtensions,
-                    installedIds = installedExtensions.map { it.id }.toSet(),
-                    onInstall = { extensionManager.installExtension(it) }
+                    installedPkgNames = installedExtensions.map { it.pkgName }.toSet(),
+                    onInstall = { extension -> extensionManager.installExtension(extension) },
                 )
                 1 -> InstalledExtensionsList(
                     extensions = installedExtensions,
-                    onUninstall = { extensionManager.uninstallExtension(it) },
-                    onToggle = { id, enabled -> extensionManager.toggleExtension(id, enabled) }
+                    onUninstall = { extension -> extensionManager.uninstallExtension(extension.pkgName) },
+                )
+                2 -> UntrustedExtensionsList(
+                    extensions = untrustedExtensions,
+                    onTrust = { extension -> extensionManager.trustExtension(extension) },
                 )
             }
         }
@@ -103,106 +145,91 @@ fun NovelExtensionContent(
 
 @Composable
 private fun AvailableExtensionsList(
-    extensions: List<CatalogRemote>,
-    installedIds: Set<String>,
-    onInstall: (CatalogRemote) -> Unit
+    extensions: List<NovelExtension.Available>,
+    installedPkgNames: Set<String>,
+    onInstall: (NovelExtension.Available) -> Unit,
 ) {
     if (extensions.isEmpty()) {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
-        ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(
-                    Icons.Default.CloudDownload,
-                    contentDescription = null,
-                    modifier = Modifier.size(48.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    "Loading extensions...",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
+        EmptyState(
+            icon = Icons.Default.Extension,
+            title = "No extensions available",
+            message = "Check the configured extension repositories.",
+        )
         return
     }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        items(extensions) { extension ->
-            ExtensionCard(
+        items(
+            items = extensions,
+            key = { it.pkgName },
+        ) { extension ->
+            AvailableExtensionCard(
                 extension = extension,
-                isInstalled = installedIds.contains(extension.pkgName),
-                onInstall = { onInstall(extension) }
+                isInstalled = extension.pkgName in installedPkgNames,
+                onInstall = { onInstall(extension) },
             )
         }
     }
 }
 
 @Composable
-private fun ExtensionCard(
-    extension: CatalogRemote,
+private fun AvailableExtensionCard(
+    extension: NovelExtension.Available,
     isInstalled: Boolean,
-    onInstall: () -> Unit
+    onInstall: () -> Unit,
 ) {
     Card(
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier.fillMaxWidth(),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column(
-                modifier = Modifier.weight(1f)
-            ) {
+            Icon(
+                Icons.Default.Extension,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+            )
+            Spacer(modifier = Modifier.width(16.dp))
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = extension.name,
                     style = MaterialTheme.typography.titleMedium,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    overflow = TextOverflow.Ellipsis,
                 )
-                Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = buildString {
                         append(extension.lang)
-                        append(" • v${extension.versionName}")
-                        if (extension.nsfw) append(" • 18+")
-                        append(" • ${extension.repositoryType}")
+                        append(" - v")
+                        append(extension.versionName)
+                        if (extension.repoName.isNotBlank()) {
+                            append(" - ")
+                            append(extension.repoName)
+                        }
+                        if (extension.isNsfw) {
+                            append(" - NSFW")
+                        }
                     },
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
-                extension.description.takeIf { it.isNotBlank() }?.let { desc ->
-                    Text(
-                        text = desc,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
             }
-
-            Spacer(modifier = Modifier.width(16.dp))
-
-            if (isInstalled) {
-                Icon(
-                    Icons.Default.CheckCircle,
-                    contentDescription = "Installed",
-                    tint = MaterialTheme.colorScheme.primary
-                )
-            } else {
-                FilledTonalButton(onClick = onInstall) {
-                    Text("Install")
-                }
+            Spacer(modifier = Modifier.width(8.dp))
+            Button(
+                onClick = onInstall,
+                enabled = !isInstalled,
+            ) {
+                Text(if (isInstalled) "Installed" else "Install")
             }
         }
     }
@@ -210,49 +237,30 @@ private fun ExtensionCard(
 
 @Composable
 private fun InstalledExtensionsList(
-    extensions: List<InstalledExtension>,
-    onUninstall: (String) -> Unit,
-    onToggle: (String, Boolean) -> Unit
+    extensions: List<NovelExtension.Installed>,
+    onUninstall: (NovelExtension.Installed) -> Unit,
 ) {
     if (extensions.isEmpty()) {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
-        ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(
-                    Icons.Default.Extension,
-                    contentDescription = null,
-                    modifier = Modifier.size(48.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    "No extensions installed",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    "Browse available extensions to install",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
+        EmptyState(
+            icon = Icons.Default.Extension,
+            title = "No extensions installed",
+            message = "Install an IReader or LNReader extension to add novel sources.",
+        )
         return
     }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        items(extensions) { extension ->
+        items(
+            items = extensions,
+            key = { it.pkgName },
+        ) { extension ->
             InstalledExtensionCard(
                 extension = extension,
-                onUninstall = { onUninstall(extension.id) },
-                onToggle = { enabled -> onToggle(extension.id, enabled) }
+                onUninstall = { onUninstall(extension) },
             )
         }
     }
@@ -260,75 +268,167 @@ private fun InstalledExtensionsList(
 
 @Composable
 private fun InstalledExtensionCard(
-    extension: InstalledExtension,
+    extension: NovelExtension.Installed,
     onUninstall: () -> Unit,
-    onToggle: (Boolean) -> Unit
 ) {
-    var showUninstallDialog by remember { mutableStateOf(false) }
-
     Card(
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier.fillMaxWidth(),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column(
-                modifier = Modifier.weight(1f)
-            ) {
+            Icon(
+                Icons.Default.Extension,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+            )
+            Spacer(modifier = Modifier.width(16.dp))
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = extension.name,
                     style = MaterialTheme.typography.titleMedium,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    overflow = TextOverflow.Ellipsis,
                 )
-                Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "${extension.lang} • v${extension.version} • ${extension.repositoryType}",
+                    text = buildString {
+                        append(extension.pkgName)
+                        append(" - v")
+                        append(extension.versionName)
+                        append(" - ")
+                        append(extension.sources.size)
+                        append(" source")
+                        if (extension.sources.size != 1) {
+                            append("s")
+                        }
+                        if (extension.hasUpdate) {
+                            append(" - Update available")
+                        }
+                    },
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
-
-            Spacer(modifier = Modifier.width(16.dp))
-
-            Switch(
-                checked = extension.isEnabled,
-                onCheckedChange = onToggle
-            )
-
-            IconButton(onClick = { showUninstallDialog = true }) {
-                Icon(
-                    Icons.Default.Delete,
-                    contentDescription = "Uninstall",
-                    tint = MaterialTheme.colorScheme.error
-                )
+            Spacer(modifier = Modifier.width(8.dp))
+            IconButton(onClick = onUninstall) {
+                Icon(Icons.Default.Delete, contentDescription = "Uninstall")
             }
         }
     }
+}
 
-    if (showUninstallDialog) {
-        AlertDialog(
-            onDismissRequest = { showUninstallDialog = false },
-            title = { Text("Uninstall Extension") },
-            text = { Text("Are you sure you want to uninstall ${extension.name}?") },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        onUninstall()
-                        showUninstallDialog = false
-                    }
-                ) {
-                    Text("Uninstall", color = MaterialTheme.colorScheme.error)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showUninstallDialog = false }) {
-                    Text("Cancel")
-                }
+@Composable
+private fun UntrustedExtensionsList(
+    extensions: List<NovelExtension.Untrusted>,
+    onTrust: (NovelExtension.Untrusted) -> Unit,
+) {
+    if (extensions.isEmpty()) {
+        EmptyState(
+            icon = Icons.Default.Security,
+            title = "No untrusted extensions",
+            message = "Extensions with unknown signatures will appear here.",
+        )
+        return
+    }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        items(
+            items = extensions,
+            key = { it.pkgName },
+        ) { extension ->
+            UntrustedExtensionCard(
+                extension = extension,
+                onTrust = { onTrust(extension) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun UntrustedExtensionCard(
+    extension: NovelExtension.Untrusted,
+    onTrust: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.errorContainer,
+            contentColor = MaterialTheme.colorScheme.onErrorContainer,
+        ),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Icons.Default.Warning, contentDescription = null)
+            Spacer(modifier = Modifier.width(16.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = extension.name,
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = "${extension.pkgName} - v${extension.versionName}",
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
+            Spacer(modifier = Modifier.width(8.dp))
+            OutlinedButton(onClick = onTrust) {
+                Text("Trust")
+            }
+        }
+    }
+}
+
+@Composable
+private fun EmptyState(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    message: String,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Icon(
+            icon,
+            contentDescription = null,
+            modifier = Modifier
+                .width(64.dp)
+                .height(64.dp),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = message,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }

@@ -149,7 +149,13 @@ class KavitaSource(
     override suspend fun getMangaDetails(manga: SManga): SManga {
         val seriesId = manga.url.substringAfterLast("/")
         val response = client.newCall(GET("$baseUrl/api/series/metadata?seriesId=$seriesId")).awaitSuccess()
-        return parseMangaDetails(response)
+        return parseMangaDetails(response).let { details ->
+            if (details.title.isBlank() && manga.title.isNotBlank()) {
+                details.copy().also { it.title = manga.title }
+            } else {
+                details
+            }
+        }
     }
 
     override suspend fun getChapterList(manga: SManga): List<SChapter> {
@@ -192,10 +198,12 @@ class KavitaSource(
         return detail.toSManga(baseUrl)
     }
 
-    private fun parseDateTime(dateStr: String): Long = runCatching { formatterDateTime.parse(dateStr)?.time ?: 0L }.getOrDefault(0L)
+    private fun parseDateTime(dateStr: String): Long = runCatching { threadLocalFormatter.get()!!.parse(dateStr)?.time ?: 0L }.getOrDefault(0L)
 
     companion object {
-        private val formatterDateTime = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }
+        private val threadLocalFormatter = ThreadLocal.withInitial {
+            SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }
+        }
 
         fun generateId(server: NovelServer): Long {
             val key = "kavita:${server.baseUrl}:${server.name}"
@@ -263,10 +271,19 @@ data class KavitaSeriesDetailPlusDto(
         artist = coverArtists.joinToString { it.name }.takeIf { it.isNotBlank() }
         description = summary
         genre = (genres.map { it.title } + tags.map { it.title }).joinToString(", ").takeIf { it.isNotBlank() }
-        status = SManga.UNKNOWN
+        status = publicationStatus?.let { mapPublicationStatusV2(it) } ?: SManga.UNKNOWN
         thumbnail_url = seriesId?.let { "$baseUrl/api/Image/SeriesCover?seriesId=$it" }
         initialized = true
     }
+}
+
+private fun mapPublicationStatusV2(status: Int): Int = when (status) {
+    1 -> SManga.ONGOING
+    2 -> SManga.COMPLETED
+    3 -> SManga.CANCELLED
+    4 -> SManga.ON_HIATUS
+    5 -> SManga.PUBLISHING_FINISHED
+    else -> SManga.UNKNOWN
 }
 
 @Serializable

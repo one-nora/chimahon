@@ -46,7 +46,7 @@ fun Screen.novelSourcesTab(): TabContent {
     val sourceManager = remember { Injekt.get<NovelSourceManager>() }
     val extensionManager = remember { Injekt.get<NovelExtensionManager>() }
     val entries by sourceManager.getEntriesFlow().collectAsState(initial = emptyList())
-    val extensionSources by extensionManager.loadedSources.collectAsState()
+    val extensionSources by extensionManager.loadedNovelSources.collectAsState()
     val installedExtensions by extensionManager.installedExtensions.collectAsState()
 
     return TabContent(
@@ -177,8 +177,7 @@ fun Screen.novelSourcesTab(): TabContent {
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable {
-                                    val adapter = chimahon.source.ireader.adapter.IReaderSourceAdapter(source)
-                                    navigator.push(BrowseNovelSourceScreen(null, adapter))
+                                    navigator.push(BrowseNovelSourceScreen(null, source))
                                 }
                                 .padding(horizontal = 16.dp, vertical = 12.dp),
                             verticalAlignment = Alignment.CenterVertically,

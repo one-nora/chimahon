@@ -7,13 +7,14 @@ import chimahon.novel.model.NovelServerType
 import chimahon.novel.source.opds.OpdsSource
 import chimahon.source.kavita.KavitaNovelSource
 import chimahon.source.komga.KomgaNovelSource
-import chimahon.source.ireader.adapter.IReaderSourceAdapter
-import chimahon.source.ireader.source.CatalogSource
 import eu.kanade.tachiyomi.sourcenovel.NovelSource
 import eu.kanade.tachiyomi.sourcenovel.NovelsPageSource
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 
 data class NovelSourceWithServer(
     val server: NovelServer,
@@ -22,13 +23,19 @@ data class NovelSourceWithServer(
 
 class NovelSourceManager(
     private val serverStorage: NovelServerStorage,
-    private val extensionManager: NovelExtensionManager? = null
+    private val extensionManager: NovelExtensionManager
 ) {
     private val sourceEntries = mutableMapOf<Long, NovelSourceWithServer>()
     private val extensionSourceEntries = mutableMapOf<Long, NovelSource>()
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     init {
         rebuildSources(emptyList())
+        scope.launch {
+            extensionManager.loadedNovelSources.collect { extensionSources ->
+                rebuildExtensionSources(extensionSources)
+            }
+        }
     }
 
     fun rebuildSources(servers: List<NovelServer>) {
@@ -39,11 +46,10 @@ class NovelSourceManager(
         }
     }
 
-    fun rebuildExtensionSources(extensionSources: List<CatalogSource>) {
+    fun rebuildExtensionSources(extensionSources: List<NovelSource>) {
         extensionSourceEntries.clear()
         for (source in extensionSources) {
-            val adapter = IReaderSourceAdapter(source)
-            extensionSourceEntries[adapter.id] = adapter
+            extensionSourceEntries[source.id] = source
         }
     }
 
@@ -67,19 +73,6 @@ class NovelSourceManager(
         return serverStorage.getAllServers().map { servers ->
             rebuildSources(servers)
             getAllEntries()
-        }
-    }
-
-    fun getAllSourcesFlow(): Flow<List<NovelSource>> {
-        return combine(
-            serverStorage.getAllServers(),
-            extensionManager?.loadedSources ?: kotlinx.coroutines.flow.flowOf(emptyList())
-        ) { servers, extensionSources ->
-            rebuildSources(servers)
-            rebuildExtensionSources(extensionSources)
-            val builtIn = sourceEntries.values.map { it.source }
-            val extension = extensionSourceEntries.values.toList()
-            builtIn + extension
         }
     }
 
