@@ -84,10 +84,10 @@ class MangaBakaApi(
                     put("rating", track.score.toInt().coerceIn(0, 100))
                 }
                 if (track.started_reading_date > 0) {
-                    put("start_date", track.started_reading_date.toApiDateTimeString())
+                    put("start_date", track.started_reading_date.toLocalDate().toString())
                 }
                 if (track.finished_reading_date > 0) {
-                    put("finish_date", track.finished_reading_date.toApiDateTimeString())
+                    put("finish_date", track.finished_reading_date.toLocalDate().toString())
                 }
             }
                 .toString()
@@ -152,23 +152,15 @@ class MangaBakaApi(
                 put("is_private", track.private)
                 if (track.last_chapter_read > 0.0) {
                     put("progress_chapter", track.last_chapter_read)
-                } else {
-                    put("progress_chapter", null)
                 }
                 if (track.score > 0) {
                     put("rating", track.score.toInt().coerceIn(0, 100))
-                } else {
-                    put("rating", null)
                 }
                 if (track.started_reading_date > 0) {
-                    put("start_date", track.started_reading_date.toApiDateTimeString())
-                } else {
-                    put("start_date", null)
+                    put("start_date", track.started_reading_date.toLocalDate().toString())
                 }
                 if (track.finished_reading_date > 0) {
-                    put("finish_date", track.finished_reading_date.toApiDateTimeString())
-                } else {
-                    put("finish_date", null)
+                    put("finish_date", track.finished_reading_date.toLocalDate().toString())
                 }
             }
                 .toString()
@@ -241,13 +233,6 @@ class MangaBakaApi(
         private const val API_BASE_URL = "https://api.mangabaka.org"
         private const val LIBRARY_API_URL = "$API_BASE_URL/v1/my/library"
         private const val APP_JSON = "application/json"
-
-        private fun Long.toApiDateTimeString(): String {
-            return toLocalDate()
-                .atStartOfDay(ZoneOffset.UTC)
-                .toInstant()
-                .toString()
-        }
 
         private fun parseApiDateMillis(value: String?): Long {
             val text = value?.takeIf { it.isNotBlank() } ?: return 0
