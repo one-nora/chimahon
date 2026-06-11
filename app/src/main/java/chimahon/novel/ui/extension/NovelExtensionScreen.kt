@@ -1,6 +1,7 @@
 package chimahon.novel.ui.extension
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -8,38 +9,55 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.core.screen.Screen
@@ -47,6 +65,8 @@ import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import chimahon.novel.extension.NovelExtension
 import chimahon.novel.extension.NovelExtensionManager
+import chimahon.novel.extension.install.ExtensionEvent
+import chimahon.novel.extension.install.InstallStep
 import kotlinx.coroutines.launch
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
@@ -69,13 +89,47 @@ private fun NovelExtensionContent(
     val navigator = LocalNavigator.currentOrThrow
     val scope = rememberCoroutineScope()
     var selectedTab by remember { mutableIntStateOf(0) }
+    val snackbarHostState = remember { SnackbarHostState() }
 
     val availableExtensions by extensionManager.availableNovelExtensions.collectAsState()
     val installedExtensions by extensionManager.installedNovelExtensions.collectAsState()
     val untrustedExtensions by extensionManager.untrustedExtensions.collectAsState()
     val isLoading by extensionManager.isLoading.collectAsState()
+    val extensionState by extensionManager.extensionState.collectAsState()
+    var showRepoDialog by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        extensionManager.extensionEvents.collect { event ->
+            when (event) {
+                is ExtensionEvent.InstallCompleted ->
+                    snackbarHostState.showSnackbar("Installed ${event.pkgName}")
+                is ExtensionEvent.InstallFailed ->
+                    snackbarHostState.showSnackbar("Install failed: ${event.reason}")
+                is ExtensionEvent.UninstallCompleted ->
+                    snackbarHostState.showSnackbar("Uninstalled ${event.pkgName}")
+                is ExtensionEvent.UninstallFailed ->
+                    snackbarHostState.showSnackbar("Uninstall failed: ${event.reason}")
+            }
+        }
+    }
+
+    if (showRepoDialog) {
+        RepoManagementDialog(
+            repos = extensionManager.getExtensionRepos(),
+            onAdd = { url ->
+                extensionManager.addExtensionRepo(url)
+                scope.launch { extensionManager.refreshAvailableExtensions() }
+            },
+            onRemove = { url ->
+                extensionManager.removeExtensionRepo(url)
+                scope.launch { extensionManager.refreshAvailableExtensions() }
+            },
+            onDismiss = { showRepoDialog = false },
+        )
+    }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             CenterAlignedTopAppBar(
                 title = { Text("Novel Extensions") },
@@ -85,6 +139,9 @@ private fun NovelExtensionContent(
                     }
                 },
                 actions = {
+                    IconButton(onClick = { showRepoDialog = true }) {
+                        Icon(Icons.Default.Settings, contentDescription = "Manage repos")
+                    }
                     IconButton(
                         onClick = {
                             extensionManager.loadInstalledExtensions()
@@ -123,20 +180,25 @@ private fun NovelExtensionContent(
                     text = { Text("Untrusted") },
                 )
             }
-
             when (selectedTab) {
                 0 -> AvailableExtensionsList(
                     extensions = availableExtensions,
                     installedPkgNames = installedExtensions.map { it.pkgName }.toSet(),
-                    onInstall = { extension -> extensionManager.installExtension(extension) },
+                    installSteps = extensionState.installSteps,
+                    onInstall = { extension ->
+                        val remote = extensionManager.availableExtensions.value.find { it.pkgName == extension.pkgName }
+                        if (remote != null) {
+                            scope.launch { extensionManager.installExtension(remote).collect {} }
+                        }
+                    },
                 )
                 1 -> InstalledExtensionsList(
                     extensions = installedExtensions,
-                    onUninstall = { extension -> extensionManager.uninstallExtension(extension.pkgName) },
+                    onUninstall = { extensionManager.uninstallExtension(it) },
                 )
                 2 -> UntrustedExtensionsList(
                     extensions = untrustedExtensions,
-                    onTrust = { extension -> extensionManager.trustExtension(extension) },
+                    onTrust = { extensionManager.trustExtension(it) },
                 )
             }
         }
@@ -147,6 +209,7 @@ private fun NovelExtensionContent(
 private fun AvailableExtensionsList(
     extensions: List<NovelExtension.Available>,
     installedPkgNames: Set<String>,
+    installSteps: Map<String, InstallStep>,
     onInstall: (NovelExtension.Available) -> Unit,
 ) {
     if (extensions.isEmpty()) {
@@ -170,6 +233,7 @@ private fun AvailableExtensionsList(
             AvailableExtensionCard(
                 extension = extension,
                 isInstalled = extension.pkgName in installedPkgNames,
+                installStep = installSteps[extension.pkgName],
                 onInstall = { onInstall(extension) },
             )
         }
@@ -180,6 +244,7 @@ private fun AvailableExtensionsList(
 private fun AvailableExtensionCard(
     extension: NovelExtension.Available,
     isInstalled: Boolean,
+    installStep: InstallStep?,
     onInstall: () -> Unit,
 ) {
     Card(
@@ -192,11 +257,37 @@ private fun AvailableExtensionCard(
                 .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(
-                Icons.Default.Extension,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-            )
+            when (installStep) {
+                is InstallStep.Downloading -> {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(24.dp),
+                        strokeWidth = 2.dp,
+                    )
+                }
+                is InstallStep.Success -> {
+                    Icon(
+                        Icons.Default.CheckCircle,
+                        contentDescription = null,
+                        tint = Color(0xFF4CAF50),
+                        modifier = Modifier.size(24.dp),
+                    )
+                }
+                is InstallStep.Error -> {
+                    Icon(
+                        Icons.Default.Error,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(24.dp),
+                    )
+                }
+                else -> {
+                    Icon(
+                        Icons.Default.Extension,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                }
+            }
             Spacer(modifier = Modifier.width(16.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
@@ -217,21 +308,30 @@ private fun AvailableExtensionCard(
                         if (extension.isNsfw) {
                             append(" - NSFW")
                         }
+                        if (installStep is InstallStep.Error) {
+                            append(" - ")
+                            append(installStep.error)
+                        }
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
             Spacer(modifier = Modifier.width(8.dp))
             Button(
                 onClick = onInstall,
-                enabled = !isInstalled,
+                enabled = !isInstalled && installStep !is InstallStep.Downloading,
             ) {
-                Text(if (isInstalled) "Installed" else "Install")
-            }
-        }
+                Text(
+                    when {
+                        installStep is InstallStep.Downloading -> "Downloading"
+                        isInstalled -> "Installed"
+                        else -> "Install"
+                    },
+                )
+            }}
     }
 }
 
@@ -395,6 +495,88 @@ private fun UntrustedExtensionCard(
             }
         }
     }
+}
+
+@Composable
+private fun RepoManagementDialog(
+    repos: List<String>,
+    onAdd: (String) -> Unit,
+    onRemove: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var newRepoUrl by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Extension Repositories") },
+        text = {
+            Column {
+                Text(
+                    "Add or remove extension repository URLs.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    OutlinedTextField(
+                        value = newRepoUrl,
+                        onValueChange = { newRepoUrl = it },
+                        placeholder = { Text("https://.../index.min.json") },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    IconButton(
+                        onClick = {
+                            if (newRepoUrl.isNotBlank()) {
+                                onAdd(newRepoUrl.trim())
+                                newRepoUrl = ""
+                            }
+                        },
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = "Add")
+                    }
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+                repos.forEachIndexed { index, repo ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp),
+                    ) {
+                        Text(
+                            text = repo,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.weight(1f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        IconButton(
+                            onClick = { onRemove(repo) },
+                        ) {
+                            Icon(
+                                Icons.Default.Close,
+                                contentDescription = "Remove",
+                                tint = MaterialTheme.colorScheme.error,
+                            )
+                        }
+                    }
+                    if (index < repos.size - 1) {
+                        HorizontalDivider()
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Done")
+            }
+        },
+    )
 }
 
 @Composable

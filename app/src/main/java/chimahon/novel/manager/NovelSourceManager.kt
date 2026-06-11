@@ -13,6 +13,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
@@ -25,54 +27,54 @@ class NovelSourceManager(
     private val serverStorage: NovelServerStorage,
     private val extensionManager: NovelExtensionManager
 ) {
-    private val sourceEntries = mutableMapOf<Long, NovelSourceWithServer>()
-    private val extensionSourceEntries = mutableMapOf<Long, NovelSource>()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val allSourcesFlow = MutableStateFlow<Map<Long, NovelsPageSource>>(emptyMap())
+
+    val catalogueSources: Flow<List<NovelsPageSource>> = allSourcesFlow.map { it.values.toList() }
 
     init {
-        rebuildSources(emptyList())
         scope.launch {
-            extensionManager.loadedNovelSources.collect { extensionSources ->
-                rebuildExtensionSources(extensionSources)
+            combine(
+                serverStorage.getAllServers(),
+                extensionManager.loadedNovelSources,
+            ) { servers, extensionSources ->
+                val merged = mutableMapOf<Long, NovelsPageSource>()
+                for (server in servers.filter { it.enabled }) {
+                    val source = createSource(server) ?: continue
+                    if (source is NovelsPageSource) {
+                        merged[source.id] = source
+                    }
+                }
+                for (source in extensionSources) {
+                    if (source is NovelsPageSource) {
+                        merged[source.id] = source
+                    }
+                }
+                merged
+            }.collect { merged ->
+                allSourcesFlow.value = merged
             }
         }
     }
 
-    fun rebuildSources(servers: List<NovelServer>) {
-        sourceEntries.clear()
-        for (server in servers.filter { it.enabled }) {
-            val source = createSource(server) ?: continue
-            sourceEntries[source.id] = NovelSourceWithServer(server, source)
-        }
-    }
-
-    fun rebuildExtensionSources(extensionSources: List<NovelSource>) {
-        extensionSourceEntries.clear()
-        for (source in extensionSources) {
-            extensionSourceEntries[source.id] = source
-        }
-    }
-
     fun getNovelSource(sourceId: Long): NovelSource? {
-        return sourceEntries[sourceId]?.source ?: extensionSourceEntries[sourceId]
+        return allSourcesFlow.value[sourceId]
     }
-
-    fun getSourceEntry(sourceId: Long): NovelSourceWithServer? = sourceEntries[sourceId]
 
     fun getCatalogueSources(): List<NovelsPageSource> {
-        val builtIn = sourceEntries.values.map { it.source }.filterIsInstance<NovelsPageSource>()
-        val extension = extensionSourceEntries.values.filterIsInstance<NovelsPageSource>()
-        return builtIn + extension
+        return allSourcesFlow.value.values.toList()
     }
 
-    fun getAllEntries(): List<NovelSourceWithServer> = sourceEntries.values.toList()
-
-    fun getExtensionSources(): List<NovelSource> = extensionSourceEntries.values.toList()
+    fun getExtensionSources(): List<NovelSource> {
+        return extensionManager.loadedNovelSources.value
+    }
 
     fun getEntriesFlow(): Flow<List<NovelSourceWithServer>> {
         return serverStorage.getAllServers().map { servers ->
-            rebuildSources(servers)
-            getAllEntries()
+            servers.filter { it.enabled }.mapNotNull { server ->
+                val source = createSource(server) ?: return@mapNotNull null
+                NovelSourceWithServer(server, source)
+            }
         }
     }
 

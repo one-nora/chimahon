@@ -192,7 +192,7 @@ class NovelLibraryScreenModel(
         }.toImmutableList()
 
         mutableState.update {
-            it.copy(dialog = Dialog.ChangeCategory(selectedBooks.toImmutableList(), preselected))
+            it.copy(dialog = Dialog.ChangeCategory(selectedLocalBooks.toImmutableList(), preselected))
         }
     }
 

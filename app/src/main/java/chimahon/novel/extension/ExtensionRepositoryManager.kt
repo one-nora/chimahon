@@ -40,8 +40,39 @@ class ExtensionRepositoryManager(private val context: Context) {
         File(extensionsDir, "installed.json")
     }
 
-    suspend fun fetchAvailableExtensions(): List<CatalogRemote> {
-        return catalogApi.fetchCatalogs()
+    private val reposFile: File by lazy {
+        File(extensionsDir, "repos.json")
+    }
+
+    fun getCustomRepos(): List<String> {
+        if (!reposFile.exists()) return CatalogGithubApi.DEFAULT_REPOS
+        return try {
+            json.decodeFromString<List<String>>(reposFile.readText())
+        } catch (e: Exception) {
+            CatalogGithubApi.DEFAULT_REPOS
+        }
+    }
+
+    fun setCustomRepos(repoUrls: List<String>) {
+        reposFile.writeText(json.encodeToString(repoUrls))
+    }
+
+    fun addRepo(repoUrl: String) {
+        val repos = getCustomRepos().toMutableList()
+        if (repoUrl !in repos) {
+            repos.add(repoUrl)
+            setCustomRepos(repos)
+        }
+    }
+
+    fun removeRepo(repoUrl: String) {
+        val repos = getCustomRepos().toMutableList()
+        repos.remove(repoUrl)
+        setCustomRepos(repos)
+    }
+
+    suspend fun fetchAvailableExtensions(repoUrls: List<String>? = null): List<CatalogRemote> {
+        return catalogApi.fetchCatalogs(repoUrls ?: getCustomRepos())
     }
 
     suspend fun checkForUpdates(): List<ExtensionUpdate> {

@@ -12,6 +12,8 @@ import com.canopus.chimareader.data.epub.ManifestItem
 import com.canopus.chimareader.data.epub.SpineItem
 import com.canopus.chimareader.data.epub.EpubMediaType
 import eu.kanade.tachiyomi.sourcenovel.NovelSource
+import org.jsoup.Jsoup
+import org.jsoup.safety.Safelist
 import eu.kanade.tachiyomi.sourcenovel.model.ChapterContent
 import eu.kanade.tachiyomi.sourcenovel.model.ContentItem
 import eu.kanade.tachiyomi.sourcenovel.model.SNChapter
@@ -27,6 +29,14 @@ object SourceChapterBookBuilder {
 
     private const val CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000L // 24 hours
     private const val CACHE_MAX_ENTRIES = 50
+
+    private val SAFELIST = Safelist.relaxed()
+        .addTags("ruby", "rt", "rp", "sup", "sub")
+        .addAttributes("img", "src", "alt", "width", "height", "style")
+        .addAttributes("a", "href", "title", "rel")
+        .addAttributes(":all", "style", "class", "id", "lang", "dir", "title")
+        .addProtocols("img", "src", "http", "https", "data")
+        .addProtocols("a", "href", "http", "https", "mailto")
 
     fun cleanUpOldCache(context: Context) {
         val cacheDir = BookStorage.getBooksDirectory(context)
@@ -69,7 +79,7 @@ object SourceChapterBookBuilder {
         novel: SNNovel,
         chapter: SNChapter,
     ): File {
-        val bookId = "src_${source.id}_${novel.title.hashCode()}_ch${chapter.chapter_number}"
+        val bookId = "src_${source.id}_${novel.title.hashCode()}"
         val bookDir = BookStorage.getBookDirectory(context, bookId)
 
         if (bookDir.exists()) bookDir.deleteRecursively()
@@ -96,8 +106,6 @@ object SourceChapterBookBuilder {
             BookMetadata(id = bookId, title = novel.title, author = novel.author, folder = bookId),
             bookDir, FileNames.metadata,
         )
-        BookStorage.saveSpineCache(epubBook.spine, bookDir)
-
         return bookDir
     }
 
@@ -152,8 +160,6 @@ object SourceChapterBookBuilder {
             BookMetadata(id = bookId, title = novel.title, author = novel.author, folder = bookId),
             bookDir, FileNames.metadata,
         )
-        BookStorage.saveSpineCache(epubBook.spine, bookDir)
-
         if (startChapterIndex in chapters.indices) {
             BookStorage.save(
                 Bookmark(
@@ -172,6 +178,7 @@ object SourceChapterBookBuilder {
 
     private fun chapterContentToXhtml(content: ChapterContent): String = when (content) {
         is ChapterContent.Text -> buildChapterXhtml(content.fullText())
+        is ChapterContent.Html -> buildHtmlChapterXhtml(content.html)
         is ChapterContent.Images -> buildImageChapterXhtml(content.urls)
         is ChapterContent.Mixed -> buildMixedChapterXhtml(content.items)
     }
@@ -184,6 +191,18 @@ object SourceChapterBookBuilder {
 ${text.escapeXml().replace("\n\n", "</p><p>").let { "<p>$it</p>" }}
 </body>
 </html>"""
+
+    private fun buildHtmlChapterXhtml(html: String): String {
+        val sanitized = Jsoup.clean(html, SAFELIST)
+        return """<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/></head>
+<body>
+$sanitized
+</body>
+</html>"""
+    }
 
     private fun buildImageChapterXhtml(imageUrls: List<String>): String {
         val images = imageUrls.joinToString("\n") { url ->

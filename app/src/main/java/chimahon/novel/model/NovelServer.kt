@@ -15,6 +15,7 @@ data class NovelServer(
     val type: NovelServerType,
     val baseUrl: String,
     val username: String? = null,
+    val password: String? = null,
     val apiKey: String? = null,
     val enabled: Boolean = true,
     val displayOrder: Int = 0,
@@ -24,5 +25,6 @@ data class NovelServer(
 
     fun sanitizedCopy(): NovelServer = copy(
         apiKey = if (apiKey.isNullOrBlank()) null else "****",
+        password = if (password.isNullOrBlank()) null else "****",
     )
 }

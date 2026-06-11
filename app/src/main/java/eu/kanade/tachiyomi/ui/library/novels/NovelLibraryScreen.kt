@@ -749,10 +749,11 @@ fun NovelLibraryContent(
                                         title = book.title ?: "",
                                         coverData = coverData,
                                         badge = {
-                                            if (!book.lang.isNullOrBlank()) {
+                                            val lang = book.lang
+                                            if (!lang.isNullOrBlank()) {
                                                 eu.kanade.presentation.library.components.LanguageBadge(
                                                     isLocal = true,
-                                                    sourceLanguage = book.lang,
+                                                    sourceLanguage = lang,
                                                 )
                                             }
                                             if (book.isGhost) {
@@ -818,13 +819,16 @@ fun NovelLibraryContent(
 
                             val title = if (displayMode == LibraryDisplayMode.CoverOnlyGrid) null else item.title
                             val langBadge: @Composable (androidx.compose.foundation.layout.RowScope.() -> Unit)? =
-                                if (item is NovelLibraryItem.LocalBook && !item.metadata.lang.isNullOrBlank()) {
-                                    {
-                                        eu.kanade.presentation.library.components.LanguageBadge(
-                                            isLocal = true,
-                                            sourceLanguage = item.metadata.lang,
-                                        )
-                                    }
+                                if (item is NovelLibraryItem.LocalBook) {
+                                    val lang = item.metadata.lang
+                                    if (!lang.isNullOrBlank()) {
+                                        {
+                                            eu.kanade.presentation.library.components.LanguageBadge(
+                                                isLocal = true,
+                                                sourceLanguage = lang,
+                                            )
+                                        }
+                                    } else null
                                 } else null
 
                             when (item) {

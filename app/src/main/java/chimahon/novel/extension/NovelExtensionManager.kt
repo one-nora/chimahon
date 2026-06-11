@@ -1,6 +1,18 @@
 package chimahon.novel.extension
 
 import android.content.Context
+import chimahon.novel.extension.install.AndroidCatalogInstaller
+import chimahon.novel.extension.install.AndroidCatalogInstallationChanges
+import chimahon.novel.extension.install.AndroidLocalInstaller
+import chimahon.novel.extension.install.ExtensionCommand
+import chimahon.novel.extension.install.ExtensionController
+import chimahon.novel.extension.install.ExtensionEvent
+import chimahon.novel.extension.install.ExtensionState
+import chimahon.novel.extension.install.InstallCatalogImpl
+import chimahon.novel.extension.install.InstallStep
+import chimahon.novel.extension.install.NovelCatalogStore
+import chimahon.novel.extension.install.SystemPackageInstaller
+import chimahon.novel.extension.install.UninstallCatalogImpl
 import chimahon.novel.extension.ireader.IReaderApkLoader
 import chimahon.novel.extension.js.JsNovelSource
 import chimahon.novel.extension.js.JsSourceEngine
@@ -12,12 +24,16 @@ import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.sourcenovel.NovelSource
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
@@ -32,10 +48,36 @@ class NovelExtensionManager(private val context: Context) {
     private val repoManager = ExtensionRepositoryManager(context)
     private var jsEngine: JsSourceEngine? = null
     private val json = Json { ignoreUnknownKeys = true; prettyPrint = true }
+    private val networkHelper = Injekt.get<NetworkHelper>()
+
+    private val appContext: android.app.Application
+        get() = context as android.app.Application
+
+    private val systemPackageInstaller by lazy { SystemPackageInstaller(appContext) }
+    private val installationChanges by lazy { AndroidCatalogInstallationChanges(appContext) }
+    private val androidLocalInstaller by lazy {
+        AndroidLocalInstaller(appContext, networkHelper.client, installationChanges)
+    }
+    private val androidCatalogInstaller by lazy {
+        AndroidCatalogInstaller(appContext, networkHelper.client, installationChanges, systemPackageInstaller)
+    }
+    private val installCatalog by lazy {
+        InstallCatalogImpl(context, androidLocalInstaller, androidCatalogInstaller)
+    }
+    private val uninstallCatalog by lazy {
+        UninstallCatalogImpl(androidLocalInstaller, androidCatalogInstaller)
+    }
+    private val catalogStore by lazy {
+        NovelCatalogStore(installationChanges)
+    }
+    private val extensionController by lazy {
+        ExtensionController(installCatalog, uninstallCatalog as chimahon.novel.extension.install.UninstallCatalogs)
+    }
+
     private val ireaderLoader by lazy {
         IReaderApkLoader(
             context = context,
-            okHttpClient = Injekt.get<NetworkHelper>().client,
+            okHttpClient = networkHelper.client,
             trustExtension = Injekt.get<TrustExtension>(),
         )
     }
@@ -64,10 +106,38 @@ class NovelExtensionManager(private val context: Context) {
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
+    val extensionState: StateFlow<ExtensionState> = extensionController.state
+    val extensionEvents: SharedFlow<ExtensionEvent> = extensionController.events
+
+    private val _updatesAvailable = MutableStateFlow<List<ExtensionUpdate>>(emptyList())
+    val updatesAvailable: StateFlow<List<ExtensionUpdate>> = _updatesAvailable.asStateFlow()
+
+    private val activeDownloads = mutableMapOf<String, Job>()
+
     private val loadedSourceMap = mutableMapOf<String, JsNovelSource>()
 
-    private val extensionsDir: File by lazy {
-        File(context.filesDir, "novel_extensions").apply { mkdirs() }
+    init {
+        scope.launch {
+            extensionController.events.collect { event ->
+                when (event) {
+                    is ExtensionEvent.InstallCompleted -> {
+                        if (event.repositoryType == "LNREADER") {
+                            runCatching {
+                                val installed = repoManager.getInstalledExtensions()
+                                installed.find { it.id == event.pkgName }?.let { ext ->
+                                    val file = File(ext.filePath)
+                                    if (file.exists()) extractAndCacheMetadata(file)
+                                }
+                            }
+                        }
+                        loadInstalledExtensions()
+                    }
+                    is ExtensionEvent.UninstallCompleted -> loadInstalledExtensions()
+                    is ExtensionEvent.InstallFailed -> Unit
+                    is ExtensionEvent.UninstallFailed -> Unit
+                }
+            }
+        }
     }
 
     fun initialize() {
@@ -188,9 +258,44 @@ class NovelExtensionManager(private val context: Context) {
             val extensions = repoManager.fetchAvailableExtensions()
             _availableExtensions.value = extensions
             _availableNovelExtensions.value = extensions.map { it.toAvailableNovelExtension() }
+            refreshUpdateCheck()
         } catch (e: Exception) {
             android.util.Log.e("ExtensionManager", "Failed to refresh extensions", e)
         }
+    }
+
+    private suspend fun refreshUpdateCheck() {
+        try {
+            val updates = repoManager.checkForUpdates()
+            _updatesAvailable.value = updates
+            // Flag installed extensions with updates
+            val installedNovels = _installedNovelExtensions.value.map { installed ->
+                if (updates.any { it.installed.id == installed.pkgName }) {
+                    when (installed) {
+                        is NovelExtension.Installed.SystemWide -> installed.copy(hasUpdate = true)
+                        is NovelExtension.Installed.Locally -> installed.copy(hasUpdate = true)
+                    }
+                } else {
+                    installed
+                }
+            }
+            _installedNovelExtensions.value = installedNovels
+            // Show notification for updates
+            if (updates.isNotEmpty()) {
+                val updateNames = updates.map { it.installed.name }
+                NovelExtensionUpdateNotifier(context).promptUpdates(updateNames)
+            } else {
+                NovelExtensionUpdateNotifier(context).dismiss()
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("ExtensionManager", "Failed to check for updates", e)
+        }
+    }
+
+    fun updateExtension(extensionId: String): Flow<InstallStep> {
+        val update = _updatesAvailable.value.find { it.installed.id == extensionId }
+            ?: return flow { emit(InstallStep.Error("No update available")) }
+        return installExtension(update.remote)
     }
 
     fun loadInstalledExtensions() {
@@ -224,7 +329,7 @@ class NovelExtensionManager(private val context: Context) {
         val jsInstalled = _installedExtensions.value
             .filter { it.isEnabled && it.repositoryType == "LNREADER" }
             .map { ext ->
-                NovelExtension.Installed(
+                NovelExtension.Installed.Locally(
                     name = ext.name,
                     pkgName = ext.id,
                     versionName = ext.version,
@@ -233,11 +338,13 @@ class NovelExtensionManager(private val context: Context) {
                     isNsfw = false,
                     repositoryType = ext.repositoryType,
                     sources = jsNovelSources.filter { it.name == ext.name || it.lang == ext.lang },
-                    isShared = false,
+                    installDir = File(ext.filePath).parent ?: context.filesDir.absolutePath,
                 )
             }
 
-        _installedNovelExtensions.value = jsInstalled + ireaderInstalled
+        val allInstalled = jsInstalled + ireaderInstalled
+        _installedNovelExtensions.value = allInstalled
+        catalogStore.setCatalogs(allInstalled)
         _untrustedExtensions.value = ireaderUntrusted
         _loadedNovelSources.value = (jsNovelSources + ireaderInstalled.flatMap { it.sources })
             .distinctBy { it.id }
@@ -266,36 +373,51 @@ class NovelExtensionManager(private val context: Context) {
         }
     }
 
-    fun installExtension(entry: CatalogRemote) {
-        scope.launch {
-            _isLoading.value = true
-            try {
-                val result = repoManager.downloadExtension(entry)
-                result.onSuccess { filePath ->
-                    // Extract and cache metadata immediately
-                    val file = File(filePath)
-                    if (entry.repositoryType == "LNREADER") {
-                        extractAndCacheMetadata(file)
-                    }
-                    loadInstalledExtensions()
-                }
-                result.onFailure { error ->
-                    android.util.Log.e("ExtensionManager", "Failed to install ${entry.name}", error)
-                }
-            } finally {
-                _isLoading.value = false
+    fun installExtension(entry: CatalogRemote): Flow<InstallStep> = flow {
+        extensionController.dispatch(ExtensionCommand.Install(entry))
+        val pkgName = entry.pkgName
+        while (true) {
+            val steps = extensionController.state.value.installSteps
+            val step = steps[pkgName]
+            if (step != null) {
+                emit(step)
+                if (step is InstallStep.Success || step is InstallStep.Error) return@flow
             }
+            kotlinx.coroutines.delay(100)
         }
     }
 
-    fun installExtension(extension: NovelExtension.Available) {
-        _availableExtensions.value.find { it.pkgName == extension.pkgName }?.let(::installExtension)
+    fun installExtension(extension: NovelExtension.Available): Flow<InstallStep> {
+        val remote = _availableExtensions.value.find { it.pkgName == extension.pkgName }
+            ?: return flow { emit(InstallStep.Error("Extension not found")) }
+        return installExtension(remote)
     }
 
-    fun uninstallExtension(extensionId: String) {
+    fun installExtensionAndForget(extension: NovelExtension.Available) {
         scope.launch {
-            loadedSourceMap.remove(extensionId)
-            repoManager.uninstallExtension(extensionId)
+            installExtension(extension).collect { }
+        }
+    }
+
+    fun updateExtension(extension: NovelExtension.Installed): Flow<InstallStep> {
+        val availableExt = _availableNovelExtensions.value.find { it.pkgName == extension.pkgName }
+            ?: return flow { emit(InstallStep.Error("Update not available")) }
+        return installExtension(availableExt)
+    }
+
+    fun updateExtension(available: NovelExtension.Available): Flow<InstallStep> {
+        return installExtension(available)
+    }
+
+    fun cancelInstallUpdateExtension(extensionId: String) {
+        activeDownloads.remove(extensionId)?.cancel()
+        extensionController.dispatch(ExtensionCommand.Cancel(extensionId))
+    }
+
+    fun uninstallExtension(extension: NovelExtension.Installed) {
+        scope.launch {
+            loadedSourceMap.remove(extension.pkgName)
+            extensionController.dispatch(ExtensionCommand.Uninstall(extension))
             loadInstalledExtensions()
         }
     }
@@ -322,6 +444,18 @@ class NovelExtensionManager(private val context: Context) {
         return _loadedSources.value
     }
 
+    fun getExtensionRepos(): List<String> = repoManager.getCustomRepos()
+
+    fun addExtensionRepo(url: String) {
+        repoManager.addRepo(url)
+        scope.launch { refreshAvailableExtensions() }
+    }
+
+    fun removeExtensionRepo(url: String) {
+        repoManager.removeRepo(url)
+        scope.launch { refreshAvailableExtensions() }
+    }
+
     fun destroy() {
         jsEngine?.destroy()
         jsEngine = null
@@ -337,6 +471,7 @@ private fun CatalogRemote.toAvailableNovelExtension(): NovelExtension.Available 
         lang = lang,
         isNsfw = nsfw,
         repositoryType = repositoryType,
+        signatureHash = pkgName, // hash derived from pkgName for Non-APK repos
         sourceId = sourceId,
         description = description,
         pkgUrl = pkgUrl,

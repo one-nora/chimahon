@@ -13,6 +13,11 @@ sealed class ChapterContent {
     }
 
     @Serializable
+    data class Html(val html: String) : ChapterContent() {
+        fun isEmpty(): Boolean = html.isBlank()
+    }
+
+    @Serializable
     data class Images(val urls: List<String>) : ChapterContent() {
         fun pageCount(): Int = urls.size
         fun isEmpty(): Boolean = urls.isEmpty()
@@ -30,6 +35,7 @@ sealed class ChapterContent {
         fun text(content: String): ChapterContent = Text(
             content.split(Regex("\n{2,}")).filter { it.isNotBlank() }
         )
+        fun html(html: String): ChapterContent = Html(html)
         fun images(urls: List<String>): ChapterContent = Images(urls)
         fun mixed(items: List<ContentItem>): ChapterContent = Mixed(items)
     }

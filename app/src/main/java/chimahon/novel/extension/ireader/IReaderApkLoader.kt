@@ -85,6 +85,15 @@ class IReaderApkLoader(
         val sourceClass = appInfo.metaData?.getString(METADATA_SOURCE_CLASS)?.trim().orEmpty()
         if (sourceClass.isBlank()) return LoadResult.Error("Missing source.class")
 
+        // Lib version check: ensure APK versionName is non-empty and parseable
+        val libVersion = versionName.substringBeforeLast('.').toDoubleOrNull()
+        if (libVersion == null || libVersion < LIB_VERSION_MIN || libVersion > LIB_VERSION_MAX) {
+            return LoadResult.Error(
+                "Extension $pkgName version $versionName is not compatible. " +
+                    "Lib version is ${libVersion ?: "unknown"}, supported range: $LIB_VERSION_MIN - $LIB_VERSION_MAX"
+            )
+        }
+
         val signatures = getSignatures(pkgInfo).orEmpty()
         if (signatures.isEmpty()) return LoadResult.Error("Unsigned IReader extension")
         if (!runCatching { kotlinx.coroutines.runBlocking { trustExtension.isTrusted(pkgInfo, signatures) } }.getOrDefault(false)) {
@@ -120,21 +129,43 @@ class IReaderApkLoader(
         }
 
         val novelSources: List<NovelSource> = listOf(IReaderCompatSourceAdapter(source))
-        return LoadResult.Success(
-            NovelExtension.Installed(
-                name = source.name.ifBlank { sourceName },
-                pkgName = pkgName,
-                versionName = versionName,
-                versionCode = versionCode,
-                lang = source.lang.ifBlank { lang },
-                isNsfw = nsfw,
-                repositoryType = "IREADER",
-                sources = novelSources,
-                icon = runCatching { appInfo.loadIcon(packageManager) }.getOrNull(),
-                isShared = info.isShared,
-                signatureHash = signatures.last(),
-            ),
-        )
+        val icon = runCatching { appInfo.loadIcon(packageManager) }.getOrNull()
+        val signatureHash = signatures.last()
+        val installDir = if (info.isShared) null else info.file.parent
+        return if (info.isShared) {
+            LoadResult.Success(
+                NovelExtension.Installed.SystemWide(
+                    name = source.name.ifBlank { sourceName },
+                    pkgName = pkgName,
+                    versionName = versionName,
+                    versionCode = versionCode,
+                    lang = source.lang.ifBlank { lang },
+                    isNsfw = nsfw,
+                    repositoryType = "IREADER",
+                    sources = novelSources,
+                    icon = icon,
+                    signatureHash = signatureHash,
+                    installDir = installDir,
+                ),
+            )
+        } else {
+            LoadResult.Success(
+                NovelExtension.Installed.Locally(
+                    name = source.name.ifBlank { sourceName },
+                    pkgName = pkgName,
+                    versionName = versionName,
+                    versionCode = versionCode,
+                    lang = source.lang.ifBlank { lang },
+                    isNsfw = nsfw,
+                    repositoryType = "IREADER",
+                    sources = novelSources,
+                    icon = icon,
+                    isShared = info.isShared,
+                    signatureHash = signatureHash,
+                    installDir = installDir ?: info.file.parent,
+                ),
+            )
+        }
     }
 
     private fun createClassLoader(info: ExtensionInfo): ClassLoader {
@@ -201,6 +232,10 @@ class IReaderApkLoader(
         private const val METADATA_SOURCE_NAME = "source.name"
         private const val METADATA_SOURCE_LANG = "source.lang"
         private const val METADATA_SOURCE_NSFW = "source.nsfw"
+
+        // IReader extension SDK version range
+        const val LIB_VERSION_MIN = 0.1
+        const val LIB_VERSION_MAX = 10.0
 
         @Suppress("DEPRECATION")
         private val PACKAGE_FLAGS = PackageManager.GET_CONFIGURATIONS or

@@ -17,7 +17,6 @@ import tachiyomi.domain.novel.repository.NovelChapterRepository
 import tachiyomi.domain.novel.repository.NovelRepository
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
-import java.io.File
 
 data class NovelChapterItem(
     val index: Int,
@@ -47,6 +46,7 @@ data class NovelDetailState(
     val dialog: Dialog? = null,
     val selectedChapters: Set<Long> = emptySet(),
     val selectionMode: Boolean = false,
+    val isRefreshingData: Boolean = false,
 )
 
 class NovelDetailScreenModel(
@@ -209,6 +209,48 @@ class NovelDetailScreenModel(
                         )
                     )
                 }
+            clearSelection()
+        }
+    }
+
+    fun markSelectedChaptersBookmark(bookmarked: Boolean) {
+        val selected = mutableState.value.selectedChapters
+        screenModelScope.launch {
+            mutableState.value.chapters
+                .filter { it.id in selected }
+                .mapNotNull { it.novelChapter }
+                .filter { it.bookmark != bookmarked }
+                .forEach { dbCh ->
+                    novelChapterRepository.update(
+                        NovelChapterUpdate(id = dbCh.id, bookmark = bookmarked)
+                    )
+                }
+            clearSelection()
+        }
+    }
+
+    fun refresh() {
+        screenModelScope.launch {
+            mutableState.value = mutableState.value.copy(isRefreshingData = true)
+            try {
+                val details = source.getNovelDetails(mutableState.value.novel)
+                val chapters = source.getChapterList(mutableState.value.novel)
+                cachedChapters = chapters
+                val items = chapters.mapIndexed { index, ch ->
+                    NovelChapterItem(index = index, snChapter = ch)
+                }
+                mutableState.value = mutableState.value.copy(
+                    novel = details,
+                    chapters = items,
+                    isRefreshingData = false,
+                    error = null,
+                )
+            } catch (e: Exception) {
+                mutableState.value = mutableState.value.copy(
+                    isRefreshingData = false,
+                    error = e.message,
+                )
+            }
         }
     }
 
@@ -262,7 +304,7 @@ class NovelDetailScreenModel(
 
         val bookId = "src_${source.id}_${mutableState.value.novel.title.hashCode()}"
         val context: Context = Injekt.get()
-        val bookDir = File(context.cacheDir, "source_books/$bookId")
+        val bookDir = BookStorage.getBookDirectory(context, bookId)
         if (!bookDir.exists()) return
 
         val bookmark = BookStorage.loadBookmark(bookDir) ?: return
@@ -271,13 +313,13 @@ class NovelDetailScreenModel(
 
         val snChapter = sourceChapters[bookmark.chapterIndex]
         val dbChapter = novelChapterRepository.getChapterByUrlAndNovelId(snChapter.url, dbNovel.id) ?: return
-        val progressInt = (bookmark.progress * 100).toLong()
+        val characterCount = bookmark.characterCount.toLong().coerceAtLeast(0)
 
         novelChapterRepository.update(
             NovelChapterUpdate(
                 id = dbChapter.id,
                 read = true,
-                lastPageRead = progressInt,
+                lastPageRead = characterCount,
             )
         )
     }
