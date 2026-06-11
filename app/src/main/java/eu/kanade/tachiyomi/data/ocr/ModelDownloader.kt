@@ -70,9 +70,7 @@ class ModelDownloader(
         }
     }
 
-    suspend fun downloadAndExtract(
-        onProgress: (Float) -> Unit = {},
-    ): Result<Unit> = withContext(Dispatchers.IO) {
+    suspend fun downloadAndExtract(): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             val url = "$RELEASE_BASE/models.zip"
             val request = Request.Builder().url(url).build()
@@ -87,34 +85,19 @@ class ModelDownloader(
                 RuntimeException("Empty response body")
             )
 
-            val totalBytes = body.contentLength()
-            var downloadedBytes = 0L
-
-            val zipBytes = body.byteStream().use { input ->
-                val baos = java.io.ByteArrayOutputStream()
-                val buf = ByteArray(8192)
-                var read: Int
-                while (input.read(buf).also { read = it } != -1) {
-                    baos.write(buf, 0, read)
-                    downloadedBytes += read
-                    if (totalBytes > 0) {
-                        onProgress(downloadedBytes.toFloat() / totalBytes)
+            body.byteStream().use { input ->
+                ZipInputStream(input).use { zip ->
+                    while (true) {
+                        val entry = zip.nextEntry ?: break
+                        val target = File(context.filesDir, entry.name)
+                        if (entry.isDirectory) {
+                            target.mkdirs()
+                        } else {
+                            target.parentFile?.mkdirs()
+                            FileOutputStream(target).use { out -> zip.copyTo(out) }
+                        }
+                        zip.closeEntry()
                     }
-                }
-                baos.toByteArray()
-            }
-
-            ZipInputStream(zipBytes.inputStream()).use { zip ->
-                while (true) {
-                    val entry = zip.nextEntry ?: break
-                    val target = File(context.filesDir, entry.name)
-                    if (entry.isDirectory) {
-                        target.mkdirs()
-                    } else {
-                        target.parentFile?.mkdirs()
-                        FileOutputStream(target).use { out -> zip.copyTo(out) }
-                    }
-                    zip.closeEntry()
                 }
             }
 
