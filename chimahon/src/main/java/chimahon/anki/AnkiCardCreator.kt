@@ -142,22 +142,24 @@ object Marker {
         READING to listOf("reading", "expression-reading", "word-reading"),
         FURIGANA to listOf("furigana", "expression-furigana", "word-furigana"),
         GLOSSARY to listOf("glossary", "definition", "meaning"),
-        WORD_AUDIO to listOf("audio", "sound", "word-audio", "term-audio"),
+        WORD_AUDIO to listOf("audio", "sound", "word-audio", "term-audio", "wordaudio"),
         DICTIONARY to listOf("dictionary", "dict"),
-        PITCH_ACCENTS to listOf("pitch-accents", "pitch-accent", "pitchaccent", "accent", "pitch-pattern"),
-        PITCH_ACCENT_POSITIONS to listOf("pitch-accent-positions", "pitch-positions", "positions", "pitchaccentpositions"),
-        PITCH_ACCENT_CATEGORIES to listOf("pitch-accent-categories", "pitch-categories", "categories", "pitchaccentcategories"),
+        PITCH_ACCENTS to listOf("pitch-accents", "pitch-accent", "pitchaccent", "pitchaccents", "accent", "pitch-pattern"),
+        PITCH_ACCENT_POSITIONS to listOf("pitch-accent-positions", "pitch-positions", "pitchpositions", "positions", "pitchaccentpositions"),
+        PITCH_ACCENT_CATEGORIES to listOf("pitch-accent-categories", "pitch-categories", "pitchcategories", "categories", "pitchaccentcategories"),
         PITCH_ACCENT_GRAPHS to listOf("pitch-accent-graphs", "pitch-graphs", "graphs", "pitchaccentgraphs"),
         SENTENCE to listOf("sentence", "example-sentence"),
-        SENTENCE_FURIGANA to listOf("sentence-furigana", "sentenceFurigana", "sentence_furigana"),
-        SENTENCE_FURIGANA_PLAIN to listOf("sentence-furigana-plain", "sentenceFuriganaPlain", "sentence_furigana_plain"),
+        SENTENCE_FURIGANA to listOf("sentence-furigana", "sentencefurigana", "sentence_furigana"),
+        SENTENCE_FURIGANA_PLAIN to listOf("sentence-furigana-plain", "sentencefuriganaplain", "sentence_furigana_plain"),
         CLOZE_BODY to listOf("cloze-body", "cloze"),
         CLOZE_PREFIX to listOf("cloze-prefix"),
         CLOZE_SUFFIX to listOf("cloze-suffix"),
         FREQUENCIES to listOf("frequencies", "freq", "frequency-list"),
-        FREQUENCY_HARMONIC_RANK to listOf("freq-rank", "frequency-rank", "freqSort"),
+        FREQUENCY_HARMONIC_RANK to listOf("freq-rank", "frequency-rank", "freqsort"),
         FREQUENCY_AVERAGE_RANK to listOf("freq-avg", "frequency-average"),
-        SENTENCE_TRANSLATION to listOf("sentence-translation", "sentenceTranslation", "meaning-eng"),
+        SENTENCE_TRANSLATION to listOf("sentence-translation", "sentencetranslation", "meaning-eng"),
+        POPUP_SELECTION_TEXT to listOf("selectiontext", "popupselectiontext", "popup-selection-text"),
+        DOCUMENT_TITLE to listOf("miscinfo", "document-title", "documenttitle"),
         SEARCH_QUERY to listOf("search-query", "query"),
         SCREENSHOT to listOf("screenshot"),
         TAGS to listOf("tags", "tag"),
@@ -200,6 +202,37 @@ sealed class AnkiResult {
 object AnkiCardCreator {
 
     private const val TAG = "AnkiCardCreator"
+    private const val TRANSPARENT_IMAGE_DATA_URI =
+        "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=="
+
+    private data class DictionaryMediaReference(
+        val dictionary: String,
+        val path: String,
+        val placeholder: String,
+    )
+
+    private class ExportMediaContext {
+        private val items = linkedMapOf<Pair<String, String>, DictionaryMediaReference>()
+
+        val references: List<DictionaryMediaReference>
+            get() = items.values.toList()
+
+        fun placeholderFor(dictionary: String, path: String): String {
+            val key = dictionary to path
+            return items.getOrPut(key) {
+                val extension = path.substringBefore('?')
+                    .substringAfterLast('.', "png")
+                    .replace(Regex("[^A-Za-z0-9]"), "")
+                    .ifBlank { "png" }
+                    .lowercase()
+                DictionaryMediaReference(
+                    dictionary = dictionary,
+                    path = path,
+                    placeholder = "chimahon_dict_${items.size}.$extension",
+                )
+            }.placeholder
+        }
+    }
 
     suspend fun addToAnki(
         context: Context,
@@ -309,7 +342,8 @@ object AnkiCardCreator {
                 }
             }
 
-            val fields = buildFields(
+            val exportMedia = ExportMediaContext()
+            val fieldsWithPlaceholders = buildFields(
                 result,
                 fieldMap,
                 cloze,
@@ -320,7 +354,9 @@ object AnkiCardCreator {
                 popupSelection,
                 glossaryIndex,
                 styles,
+                exportMedia,
             )
+            val fields = resolveDictionaryMediaPlaceholders(fieldsWithPlaceholders, exportMedia, bridge)
             android.util.Log.d(TAG, "addToAnki: built fields=$fields")
             val tagList = tags.split(",").map { it.trim() }.filter { it.isNotBlank() }
 
@@ -451,7 +487,7 @@ object AnkiCardCreator {
 
     private val MARKER_PATTERN = Regex("""\{([\w\W]+?)\}""")
 
-    fun buildFields(
+    private fun buildFields(
         result: LookupResult,
         fieldMap: Map<String, String>,
         cloze: Cloze? = null,
@@ -462,8 +498,9 @@ object AnkiCardCreator {
         popupSelection: String? = null,
         glossaryIndex: Int? = null,
         styles: List<DictionaryStyle> = emptyList(),
+        exportMedia: ExportMediaContext? = null,
     ): Map<String, String> = fieldMap.mapValues { (_, template) ->
-        formatField(template, result, cloze, media, screenshotFilename, wordAudioFilename, selectedDict, popupSelection, glossaryIndex, styles)
+        formatField(template, result, cloze, media, screenshotFilename, wordAudioFilename, selectedDict, popupSelection, glossaryIndex, styles, exportMedia)
     }
 
     private fun formatField(
@@ -477,6 +514,7 @@ object AnkiCardCreator {
         popupSelection: String?,
         glossaryIndex: Int?,
         styles: List<DictionaryStyle>,
+        exportMedia: ExportMediaContext?,
     ): String {
         if (template.isBlank()) return ""
         return MARKER_PATTERN.replace(template) { match ->
@@ -491,8 +529,66 @@ object AnkiCardCreator {
                 popupSelection = popupSelection,
                 glossaryIndex = glossaryIndex,
                 styles = styles,
+                exportMedia = exportMedia,
             )
         }
+    }
+
+    private suspend fun resolveDictionaryMediaPlaceholders(
+        fields: Map<String, String>,
+        exportMedia: ExportMediaContext,
+        bridge: AnkiDroidBridge,
+    ): Map<String, String> {
+        val references = exportMedia.references
+        if (references.isEmpty()) return fields
+
+        val session = Injekt.get<DictionaryRepository>().lookupSession
+        val replacements = linkedMapOf<String, String>()
+        for (reference in references) {
+            val replacement = if (session != null) {
+                storeDictionaryMedia(reference, session, bridge)
+            } else {
+                null
+            }
+            replacements[reference.placeholder] = replacement ?: TRANSPARENT_IMAGE_DATA_URI
+        }
+
+        return fields.mapValues { (_, value) ->
+            replacements.entries.fold(value) { current, (placeholder, replacement) ->
+                current.replace(placeholder, replacement)
+            }
+        }
+    }
+
+    private suspend fun storeDictionaryMedia(
+        reference: DictionaryMediaReference,
+        session: Long,
+        bridge: AnkiDroidBridge,
+    ): String? = try {
+        val bytes = HoshiDicts.getMediaFile(session, reference.dictionary, reference.path)
+        if (bytes != null) {
+            bridge.storeMedia(dictionaryMediaFilename(reference.path, bytes), bytes)
+        } else {
+            null
+        }
+    } catch (e: Exception) {
+        android.util.Log.w(TAG, "Failed to store dictionary media ${reference.path}", e)
+        null
+    }
+
+    private fun dictionaryMediaFilename(path: String, bytes: ByteArray): String {
+        val extension = path.substringBefore('?')
+            .substringAfterLast('.', "png")
+            .replace(Regex("[^A-Za-z0-9]"), "")
+            .ifBlank { "png" }
+            .lowercase()
+        val hash = try {
+            val digest = java.security.MessageDigest.getInstance("SHA-1").digest(bytes)
+            digest.joinToString("") { "%02x".format(it) }.take(12)
+        } catch (_: Exception) {
+            System.currentTimeMillis().toString()
+        }
+        return "chimahon_dict_$hash.$extension"
     }
 
     // =============================================================================
@@ -554,7 +650,7 @@ object AnkiCardCreator {
     // Marker rendering
     // =============================================================================
 
-    fun renderMarker(
+    private fun renderMarker(
         marker: String,
         result: LookupResult,
         cloze: Cloze? = null,
@@ -565,6 +661,7 @@ object AnkiCardCreator {
         popupSelection: String? = null,
         glossaryIndex: Int? = null,
         styles: List<DictionaryStyle> = emptyList(),
+        exportMedia: ExportMediaContext? = null,
     ): String = when (marker) {
         Marker.EXPRESSION -> escapeHtml(result.term.expression)
         Marker.READING -> escapeHtml(result.term.reading)
@@ -577,6 +674,7 @@ object AnkiCardCreator {
             noDictTag = false,
             firstOnly = false,
             styles = styles,
+            exportMedia = exportMedia,
         )
         Marker.GLOSSARY_BRIEF -> buildGlossary(
             if (glossaryIndex != null && glossaryIndex >= 0) arrayOf(result.term.glossaries.getOrElse(glossaryIndex) { result.term.glossaries.first() }) else result.term.glossaries,
@@ -584,6 +682,7 @@ object AnkiCardCreator {
             noDictTag = false,
             firstOnly = false,
             styles = styles,
+            exportMedia = exportMedia,
         )
         Marker.GLOSSARY_NO_DICT -> buildGlossary(
             if (glossaryIndex != null && glossaryIndex >= 0) arrayOf(result.term.glossaries.getOrElse(glossaryIndex) { result.term.glossaries.first() }) else result.term.glossaries,
@@ -591,6 +690,7 @@ object AnkiCardCreator {
             noDictTag = true,
             firstOnly = false,
             styles = styles,
+            exportMedia = exportMedia,
         )
         Marker.GLOSSARY_FIRST -> buildGlossary(
             if (glossaryIndex != null && glossaryIndex >= 0) arrayOf(result.term.glossaries.getOrElse(glossaryIndex) { result.term.glossaries.first() }) else result.term.glossaries,
@@ -598,6 +698,7 @@ object AnkiCardCreator {
             noDictTag = false,
             firstOnly = true,
             styles = styles,
+            exportMedia = exportMedia,
         )
         Marker.GLOSSARY_FIRST_NO_DICT -> buildGlossary(
             if (glossaryIndex != null && glossaryIndex >= 0) arrayOf(result.term.glossaries.getOrElse(glossaryIndex) { result.term.glossaries.first() }) else result.term.glossaries,
@@ -605,6 +706,7 @@ object AnkiCardCreator {
             noDictTag = true,
             firstOnly = true,
             styles = styles,
+            exportMedia = exportMedia,
         )
         Marker.GLOSSARY_FIRST_BRIEF -> buildGlossary(
             if (glossaryIndex != null && glossaryIndex >= 0) arrayOf(result.term.glossaries.getOrElse(glossaryIndex) { result.term.glossaries.first() }) else result.term.glossaries,
@@ -612,6 +714,7 @@ object AnkiCardCreator {
             noDictTag = false,
             firstOnly = true,
             styles = styles,
+            exportMedia = exportMedia,
         )
         Marker.GLOSSARY_PLAIN -> buildGlossaryPlain(
             if (glossaryIndex != null && glossaryIndex >= 0) arrayOf(result.term.glossaries.getOrElse(glossaryIndex) { result.term.glossaries.first() }) else result.term.glossaries,
@@ -654,7 +757,7 @@ object AnkiCardCreator {
         Marker.FREQUENCY_LOWEST -> selectLowestFrequencyValue(result) ?: ""
         Marker.FREQUENCY_HARMONIC_RANK -> buildFrequencyHarmonicRank(result)
         Marker.FREQUENCY_AVERAGE_RANK -> buildFrequencyAverageRank(result)
-        Marker.PITCH_ACCENTS -> buildPitchAccents(result.term.reading, result.term.pitches, format = PitchFormat.SVG)
+        Marker.PITCH_ACCENTS -> buildPitchAccents(result.term.reading, result.term.pitches, format = PitchFormat.OVERLINE)
         Marker.PITCH_ACCENT_POSITIONS -> buildPitchAccentPositions(result.term.pitches)
         Marker.PITCH_ACCENT_CATEGORIES -> buildPitchCategories(result.term.reading, result.term.rules, result.term.pitches)
         Marker.PITCH_ACCENT_COMPOSITE -> buildPitchAccents(result.term.reading, result.term.pitches, format = PitchFormat.COMPOSITE)
@@ -689,13 +792,14 @@ object AnkiCardCreator {
                     firstOnly = false,
                     dictionaryFilter = selected,
                     styles = styles,
+                    exportMedia = exportMedia,
                 )
             } else {
-                renderMarker(Marker.GLOSSARY_FIRST, result, glossaryIndex = glossaryIndex, styles = styles)
+                renderMarker(Marker.GLOSSARY_FIRST, result, glossaryIndex = glossaryIndex, styles = styles, exportMedia = exportMedia)
             }
         }
         Marker.DOCUMENT_TITLE -> media?.mangaTitle?.let { escapeHtml(it) } ?: ""
-        else -> parseSingleGlossaryMarker(marker, result, styles)
+        else -> parseSingleGlossaryMarker(marker, result, styles, exportMedia)
     }
 
     // =============================================================================
@@ -706,6 +810,7 @@ object AnkiCardCreator {
         marker: String,
         result: LookupResult,
         styles: List<DictionaryStyle>,
+        exportMedia: ExportMediaContext?,
     ): String {
         val prefix = "single-glossary-"
         if (!marker.startsWith(prefix)) return ""
@@ -765,6 +870,7 @@ object AnkiCardCreator {
             firstOnly = hasFirst,
             dictionaryFilter = dictionaryFilter,
             styles = styles,
+            exportMedia = exportMedia,
         )
     }
 
@@ -909,6 +1015,7 @@ object AnkiCardCreator {
         firstOnly: Boolean,
         dictionaryFilter: String? = null,
         styles: List<DictionaryStyle> = emptyList(),
+        exportMedia: ExportMediaContext? = null,
     ): String {
         if (glossaries.isEmpty()) return ""
 
@@ -929,7 +1036,7 @@ object AnkiCardCreator {
         for (entry in entries) {
             val dictAttr = attrEscape(entry.dictName)
             sb.append("""<li data-dictionary="$dictAttr">""")
-            sb.append(renderGlossarySingle(entry, brief, noDictTag, previousDictName))
+            sb.append(renderGlossarySingle(entry, brief, noDictTag, previousDictName, exportMedia))
             sb.append("</li>")
             previousDictName = entry.dictName
         }
@@ -1068,6 +1175,7 @@ object AnkiCardCreator {
         brief: Boolean,
         noDictTag: Boolean,
         previousDictName: String = "",
+        exportMedia: ExportMediaContext? = null,
     ): String {
         val sb = StringBuilder()
 
@@ -1084,7 +1192,7 @@ object AnkiCardCreator {
             }
         }
 
-        val content = glossaryToHtml(entry.glossary, entry.dictName)
+        val content = glossaryToHtml(entry.glossary, entry.dictName, exportMedia)
         if (content.isNotEmpty()) sb.append(content)
 
         return sb.toString()
@@ -1114,7 +1222,7 @@ object AnkiCardCreator {
     private fun escapeHtmlWithLineBreaks(text: String): String = escapeHtml(normalizePlainText(text))
         .replace("\n", "<br>")
 
-    private fun glossaryToHtml(raw: String, dictionary: String = ""): String {
+    private fun glossaryToHtml(raw: String, dictionary: String = "", exportMedia: ExportMediaContext? = null): String {
         val trimmed = raw.trim()
         if (trimmed.isEmpty()) return ""
         if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) {
@@ -1122,8 +1230,8 @@ object AnkiCardCreator {
         }
         return try {
             when {
-                trimmed.startsWith("[") -> arrayToHtml(JSONArray(trimmed), dictionary, "div")
-                else -> objectToHtml(JSONObject(trimmed), dictionary)
+                trimmed.startsWith("[") -> arrayToHtml(JSONArray(trimmed), dictionary, "div", exportMedia)
+                else -> objectToHtml(JSONObject(trimmed), dictionary, exportMedia)
             }
         } catch (_: Exception) {
             escapeHtmlWithLineBreaks(trimmed)
@@ -1144,26 +1252,26 @@ object AnkiCardCreator {
             .trim()
     }
 
-    private fun arrayToHtml(arr: JSONArray, dictionary: String, parentTag: String): String {
+    private fun arrayToHtml(arr: JSONArray, dictionary: String, parentTag: String, exportMedia: ExportMediaContext?): String {
         val allStrings = (0 until arr.length()).all { arr.get(it) is String }
         if (allStrings) {
-            if (arr.length() == 1) return contentValueToHtml(arr.getString(0), dictionary, parentTag)
+            if (arr.length() == 1) return contentValueToHtml(arr.getString(0), dictionary, parentTag, exportMedia)
             
             // Only auto-wrap in UL if we are NOT already in a list-like tag
             val isListParent = parentTag == "ul" || parentTag == "ol" || parentTag == "li" || parentTag == "span" || parentTag == "td" || parentTag == "th"
             if (!isListParent) {
                 return """<ul style="margin: 0.2em 0; padding-left: 1.2em;">""" + (0 until arr.length()).joinToString("") {
-                    "<li>${contentValueToHtml(arr.getString(it), dictionary, "li")}</li>"
+                    "<li>${contentValueToHtml(arr.getString(it), dictionary, "li", exportMedia)}</li>"
                 } + "</ul>"
             }
         }
 
         return (0 until arr.length()).joinToString("") { i ->
-            contentValueToHtml(arr.get(i), dictionary, parentTag)
+            contentValueToHtml(arr.get(i), dictionary, parentTag, exportMedia)
         }
     }
 
-    private fun objectToHtml(node: JSONObject, dictionary: String): String {
+    private fun objectToHtml(node: JSONObject, dictionary: String, exportMedia: ExportMediaContext?): String {
         val type = node.optString("type", "")
         if (type == "ruby") {
             val expression = node.optString("headword", "")
@@ -1177,24 +1285,24 @@ object AnkiCardCreator {
 
         if (type == "structured-content") {
             val content = node.opt("content") ?: return ""
-            return contentValueToHtml(content, dictionary, "div")
+            return contentValueToHtml(content, dictionary, "div", exportMedia)
         }
 
         if (type == "image") {
-            return imageNodeToHtml(node)
+            return imageNodeToHtml(node, dictionary, exportMedia)
         }
 
         val tag = node.optString("tag", "").trim().lowercase()
 
         if (tag.isEmpty()) {
             val content = node.opt("content") ?: return ""
-            return contentValueToHtml(content, dictionary, "div")
+            return contentValueToHtml(content, dictionary, "div", exportMedia)
         }
 
         val dataObj = node.optJSONObject("data")
         if (dataObj != null && dataObj.optString("content") == "attribution") return ""
 
-        if (tag.lowercase() == "img") return imageNodeToHtml(node)
+        if (tag.lowercase() == "img") return imageNodeToHtml(node, dictionary, exportMedia)
 
         if (tag == "br") return "<br>"
         if (tag == "hr") return "<hr>"
@@ -1239,9 +1347,9 @@ object AnkiCardCreator {
         val content = node.opt("content")
         if (content != null) {
             if (tag == "table") {
-                sb.append(tableContentToHtml(content, dictionary))
+                sb.append(tableContentToHtml(content, dictionary, exportMedia))
             } else {
-                sb.append(contentValueToHtml(content, dictionary, tag))
+                sb.append(contentValueToHtml(content, dictionary, tag, exportMedia))
             }
         }
 
@@ -1254,22 +1362,27 @@ object AnkiCardCreator {
         }
     }
 
-    private fun contentValueToHtml(value: Any?, dictionary: String, parentTag: String): String = when (value) {
+    private fun contentValueToHtml(value: Any?, dictionary: String, parentTag: String, exportMedia: ExportMediaContext?): String = when (value) {
         null -> ""
         is String -> escapeHtmlWithLineBreaks(value)
         is Number -> value.toString()
         is Boolean -> value.toString()
-        is JSONArray -> arrayToHtml(value, dictionary, parentTag)
-        is JSONObject -> objectToHtml(value, dictionary)
+        is JSONArray -> arrayToHtml(value, dictionary, parentTag, exportMedia)
+        is JSONObject -> objectToHtml(value, dictionary, exportMedia)
         else -> value.toString()
     }
 
-    private fun imageNodeToHtml(node: JSONObject): String {
+    private fun imageNodeToHtml(node: JSONObject, dictionary: String, exportMedia: ExportMediaContext?): String {
         val path = node.optString("path", "").ifEmpty { node.optString("src", "") }
         if (path.isEmpty()) return ""
+        val renderPath = if (exportMedia != null && !isResolvableImagePath(path)) {
+            exportMedia.placeholderFor(dictionary, path)
+        } else {
+            path
+        }
 
         val sb = StringBuilder("<img")
-        sb.append(""" src="${attrEscape(path)}"""")
+        sb.append(""" src="${attrEscape(renderPath)}"""")
         
         node.optString("alt", "").takeIf { it.isNotEmpty() }?.let { sb.append(""" alt="${attrEscape(it)}"""") }
         node.optString("title", "").takeIf { it.isNotEmpty() }?.let { sb.append(""" title="${attrEscape(it)}"""") }
@@ -1293,10 +1406,10 @@ object AnkiCardCreator {
             sb.append(""" class="gloss-image-monochrome"""")
             // Yomitan style masking: allows the image to inherit text color
             styleParts.add("background-color: currentColor")
-            styleParts.add("-webkit-mask-image: url('${attrEscape(path)}')")
+            styleParts.add("-webkit-mask-image: url('${attrEscape(renderPath)}')")
             styleParts.add("-webkit-mask-repeat: no-repeat")
             styleParts.add("-webkit-mask-size: contain")
-            styleParts.add("mask-image: url('${attrEscape(path)}')")
+            styleParts.add("mask-image: url('${attrEscape(renderPath)}')")
             styleParts.add("mask-repeat: no-repeat")
             styleParts.add("mask-size: contain")
         }
@@ -1309,7 +1422,14 @@ object AnkiCardCreator {
         return sb.toString()
     }
 
-    private fun tableContentToHtml(content: Any?, dictionary: String): String {
+    private fun isResolvableImagePath(path: String): Boolean {
+        val lower = path.lowercase()
+        return lower.startsWith("data:") ||
+            lower.startsWith("http://") ||
+            lower.startsWith("https://")
+    }
+
+    private fun tableContentToHtml(content: Any?, dictionary: String, exportMedia: ExportMediaContext?): String {
         val items: List<Any> = when (content) {
             is JSONArray -> (0 until content.length()).map { content.get(it) }
             else -> listOf(content ?: return "")
@@ -1323,9 +1443,9 @@ object AnkiCardCreator {
                 put("tag", "tbody")
                 put("content", JSONArray(items))
             }
-            objectToHtml(tbody, dictionary)
+            objectToHtml(tbody, dictionary, exportMedia)
         } else {
-            contentValueToHtml(content, dictionary, "table")
+            contentValueToHtml(content, dictionary, "table", exportMedia)
         }
     }
 
@@ -1531,28 +1651,55 @@ object AnkiCardCreator {
 
     private fun renderOverlineText(morae: List<String>, p: Int): String {
         val sb = StringBuilder()
-        sb.append("<span class=\"pronunciation-text\">")
+        sb.append("""<span class="pronunciation-text" style="display:inline;">""")
         for (i in morae.indices) {
             val mora = morae[i]
-            val isHigh = when {
-                p == 0 -> i > 0
-                p == 1 -> i == 0
-                else -> i > 0 && i < p
+            val highPitch = isMoraPitchHigh(i, p)
+            val highPitchNext = isMoraPitchHigh(i + 1, p)
+            val moraStyle = mutableListOf("display:inline-block", "position:relative")
+            if (highPitch && !highPitchNext) {
+                moraStyle.add("padding-right:0.1em")
+                moraStyle.add("margin-right:0.1em")
+            }
+            sb.append(
+                """<span class="pronunciation-mora" data-position="$i" data-pitch="${if (highPitch) "high" else "low"}" data-pitch-next="${if (highPitchNext) "high" else "low"}" style="${moraStyle.joinToString(";")}">""",
+            )
+            for (character in mora) {
+                sb.append("""<span class="pronunciation-character" style="display:inline;">""")
+                sb.append(escapeHtml(character.toString()))
+                sb.append("</span>")
             }
 
-            val style = if (isHigh) "border-top: 1px solid currentColor;" else ""
-            sb.append("<span class=\"pronunciation-mora\" style=\"$style\">")
-            sb.append(escapeHtml(mora))
+            val lineStyle = mutableListOf("border-color:currentColor")
+            if (highPitch) {
+                lineStyle.add("display:block")
+                lineStyle.add("user-select:none")
+                lineStyle.add("pointer-events:none")
+                lineStyle.add("position:absolute")
+                lineStyle.add("top:0.1em")
+                lineStyle.add("left:0")
+                lineStyle.add("right:0")
+                lineStyle.add("height:0")
+                lineStyle.add("border-top-width:0.1em")
+                lineStyle.add("border-top-style:solid")
+            }
+            if (highPitch && !highPitchNext) {
+                lineStyle.add("right:-0.1em")
+                lineStyle.add("height:0.4em")
+                lineStyle.add("border-right-width:0.1em")
+                lineStyle.add("border-right-style:solid")
+            }
+            sb.append("""<span class="pronunciation-mora-line" style="${lineStyle.joinToString(";")}"></span>""")
             sb.append("</span>")
-
-            // Add vertical line if it drops after this mora
-            val dropsNext = (p == 1 && i == 0) || (p > 1 && i == p - 1)
-            if (dropsNext) {
-                sb.append("<span style=\"display: inline-block; width: 0; height: 1em; border-right: 1px solid currentColor; margin-left: -1px; vertical-align: bottom;\"></span>")
-            }
         }
         sb.append("</span>")
         return sb.toString()
+    }
+
+    private fun isMoraPitchHigh(moraIndex: Int, pitchAccentValue: Int): Boolean = when (pitchAccentValue) {
+        0 -> moraIndex > 0
+        1 -> moraIndex < 1
+        else -> moraIndex > 0 && moraIndex < pitchAccentValue
     }
 
     private fun buildPitchCategories(reading: String, rules: String, pitches: Array<PitchEntry>): String {
