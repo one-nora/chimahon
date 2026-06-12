@@ -683,7 +683,6 @@ private class ReaderAndroidWebView(
                 var vPad = Math.round(ih * ${readerSettings.verticalPadding} / 100);
 
                 // Image max dimensions at 90vw.
-                // Wrapper has no horizontal padding, so margin: auto centers within full viewport.
                 // Height is full viewport (no vertical padding subtracted from images).
                 var imgMaxW = iw;
                 var imgMaxH = Math.max(1, ih);
@@ -737,19 +736,11 @@ private class ReaderAndroidWebView(
                     b.appendChild(wrapper);
                 }
 
-                wrapper.style.setProperty('padding', vPad + 'px 0', 'important');
+                wrapper.style.setProperty('padding', vPad + 'px ' + hPad + 'px', 'important');
                 wrapper.style.setProperty('-webkit-box-decoration-break', 'clone', 'important');
                 wrapper.style.setProperty('box-decoration-break', 'clone', 'important');
                 b.style.setProperty('padding', '0', 'important');
                 b.style.setProperty('margin', '0', 'important');
-
-                var pPadStyle = document.getElementById('hoshi-p-padding-style');
-                if (!pPadStyle) {
-                    pPadStyle = document.createElement('style');
-                    pPadStyle.id = 'hoshi-p-padding-style';
-                    document.head.appendChild(pPadStyle);
-                }
-                pPadStyle.textContent = '#hoshi-content-wrapper > p { padding-left: ' + hPad + 'px !important; padding-right: ' + hPad + 'px !important; }';
 
                 wrapper.style.setProperty('font-size', '${readerSettings.fontSize}px', 'important');
                 wrapper.style.setProperty('line-height', '${readerSettings.lineHeight}', 'important');
@@ -864,7 +855,6 @@ private class ReaderAndroidWebView(
                 var vPad = Math.round(ih * ${readerSettings.verticalPadding} / 100);
 
                 // Image max dimensions at 90vw.
-                // Wrapper has no horizontal padding, so margin: auto centers within full viewport.
                 // Height is viewport less bottomOverlap (for vertical-rl column bleed).
                 var imgMaxW = iw;
                 var imgMaxH = Math.max(1, ih - $bottomOverlapPx);
@@ -919,19 +909,11 @@ private class ReaderAndroidWebView(
                     b.appendChild(wrapper);
                 }
 
-                wrapper.style.setProperty('padding', vPad + 'px 0', 'important');
+                wrapper.style.setProperty('padding', vPad + 'px ' + hPad + 'px', 'important');
                 wrapper.style.setProperty('-webkit-box-decoration-break', 'clone', 'important');
                 wrapper.style.setProperty('box-decoration-break', 'clone', 'important');
                 b.style.setProperty('padding', '0', 'important');
                 b.style.setProperty('margin', '0', 'important');
-
-                var pPadStyle = document.getElementById('hoshi-p-padding-style');
-                if (!pPadStyle) {
-                    pPadStyle = document.createElement('style');
-                    pPadStyle.id = 'hoshi-p-padding-style';
-                    document.head.appendChild(pPadStyle);
-                }
-                pPadStyle.textContent = '#hoshi-content-wrapper > p { padding-left: ' + hPad + 'px !important; padding-right: ' + hPad + 'px !important; }';
 
                 wrapper.style.setProperty('font-size', '${readerSettings.fontSize}px', 'important');
                 wrapper.style.setProperty('line-height', '${readerSettings.lineHeight}', 'important');
@@ -1073,19 +1055,11 @@ private class ReaderAndroidWebView(
                 var ih = window.innerHeight;
                 var hPad = Math.round(iw * ${settings.horizontalPadding} / 100);
                 var vPad = Math.round(ih * ${settings.verticalPadding} / 100);
-                wrapper.style.setProperty('padding', vPad + 'px 0', 'important');
+                wrapper.style.setProperty('padding', vPad + 'px ' + hPad + 'px', 'important');
                 wrapper.style.setProperty('-webkit-box-decoration-break', 'clone', 'important');
                 wrapper.style.setProperty('box-decoration-break', 'clone', 'important');
                 b.style.setProperty('padding', '0', 'important');
                 b.style.setProperty('margin', '0', 'important');
-
-                var pPadStyle = document.getElementById('hoshi-p-padding-style');
-                if (!pPadStyle) {
-                    pPadStyle = document.createElement('style');
-                    pPadStyle.id = 'hoshi-p-padding-style';
-                    document.head.appendChild(pPadStyle);
-                }
-                pPadStyle.textContent = '#hoshi-content-wrapper > p { padding-left: ' + hPad + 'px !important; padding-right: ' + hPad + 'px !important; }';
 
                 wrapper.style.setProperty('font-size', '${settings.fontSize}px', 'important');
                 b.style.setProperty('font-size', '${settings.fontSize}px', 'important');
