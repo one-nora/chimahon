@@ -75,6 +75,8 @@ object Marker {
     const val FREQUENCY_LOWEST = "frequency-lowest"
     const val FREQUENCY_HARMONIC_RANK = "frequency-harmonic-rank"
     const val FREQUENCY_AVERAGE_RANK = "frequency-average-rank"
+    const val SINGLE_FREQUENCY = "single-frequency"
+    const val SINGLE_FREQUENCY_NUMBER = "single-frequency-number"
     const val PITCH_ACCENTS = "pitch-accents"
     const val PITCH_ACCENT_POSITIONS = "pitch-accent-positions"
     const val PITCH_ACCENT_CATEGORIES = "pitch-accent-categories"
@@ -124,10 +126,10 @@ object Marker {
         FREQUENCIES, FREQUENCY_LOWEST, FREQUENCY_HARMONIC_RANK, FREQUENCY_AVERAGE_RANK,
 
         // Meta
-        TAGS, CONJUGATION, DICTIONARY, DICTIONARY_ALIAS,
+        TAGS, PART_OF_SPEECH, CONJUGATION, DICTIONARY, DICTIONARY_ALIAS,
 
         // Source/Context
-        BOOK, CHAPTER, MEDIA, DOCUMENT_TITLE,
+        URL, BOOK, CHAPTER, MEDIA, DOCUMENT_TITLE,
 
         // Other
         SENTENCE_AUDIO, POPUP_SELECTION_TEXT,
@@ -139,13 +141,13 @@ object Marker {
 
     val AUTO_DETECT_ALIASES: Map<String, List<String>> = mapOf(
         EXPRESSION to listOf("expression", "phrase", "term", "word"),
-        READING to listOf("reading", "expression-reading", "word-reading"),
-        FURIGANA to listOf("furigana", "expression-furigana", "word-furigana"),
+        READING to listOf("reading", "expression-reading", "term-reading", "word-reading"),
+        FURIGANA to listOf("furigana", "expression-furigana", "term-furigana", "word-furigana"),
         GLOSSARY to listOf("glossary", "definition", "meaning"),
-        WORD_AUDIO to listOf("audio", "sound", "word-audio", "term-audio", "wordaudio"),
+        WORD_AUDIO to listOf("audio", "sound", "word-audio", "term-audio", "expression-audio", "wordaudio"),
         DICTIONARY to listOf("dictionary", "dict"),
-        PITCH_ACCENTS to listOf("pitch-accents", "pitch-accent", "pitchaccent", "pitchaccents", "accent", "pitch-pattern"),
-        PITCH_ACCENT_POSITIONS to listOf("pitch-accent-positions", "pitch-positions", "pitchpositions", "positions", "pitchaccentpositions"),
+        PITCH_ACCENTS to listOf("pitch-accents", "pitch", "pitch-accent", "pitchaccent", "pitchaccents", "accent", "pitch-pattern"),
+        PITCH_ACCENT_POSITIONS to listOf("pitch-accent-positions", "pitch-position", "pitch-positions", "pitchpositions", "positions", "pitchaccentpositions"),
         PITCH_ACCENT_CATEGORIES to listOf("pitch-accent-categories", "pitch-categories", "pitchcategories", "categories", "pitchaccentcategories"),
         PITCH_ACCENT_GRAPHS to listOf("pitch-accent-graphs", "pitch-graphs", "graphs", "pitchaccentgraphs"),
         SENTENCE to listOf("sentence", "example-sentence"),
@@ -154,11 +156,11 @@ object Marker {
         CLOZE_BODY to listOf("cloze-body", "cloze"),
         CLOZE_PREFIX to listOf("cloze-prefix"),
         CLOZE_SUFFIX to listOf("cloze-suffix"),
-        FREQUENCIES to listOf("frequencies", "freq", "frequency-list"),
-        FREQUENCY_HARMONIC_RANK to listOf("freq-rank", "frequency-rank", "freqsort"),
+        FREQUENCIES to listOf("frequencies", "frequency-list"),
+        FREQUENCY_HARMONIC_RANK to listOf("frequency-harmonic-rank", "freq", "frequency", "freq-rank", "frequency-rank", "freq-sort", "freqency-sort", "freqsort"),
         FREQUENCY_AVERAGE_RANK to listOf("freq-avg", "frequency-average"),
         SENTENCE_TRANSLATION to listOf("sentence-translation", "sentencetranslation", "meaning-eng"),
-        POPUP_SELECTION_TEXT to listOf("selectiontext", "popupselectiontext", "popup-selection-text"),
+        POPUP_SELECTION_TEXT to listOf("selection", "selection-text", "selectiontext", "popupselectiontext", "popup-selection-text"),
         DOCUMENT_TITLE to listOf("miscinfo", "document-title", "documenttitle"),
         SEARCH_QUERY to listOf("search-query", "query"),
         SCREENSHOT to listOf("screenshot"),
@@ -174,12 +176,18 @@ object Marker {
         if (fieldIndex == 0) {
             return if (entryType == "kanji") "character" else EXPRESSION
         }
-        val lower = fieldName.lowercase()
+        val lower = fieldName.trim().lowercase()
+        val normalized = normalizeAutoDetectName(fieldName)
         for ((marker, aliases) in AUTO_DETECT_ALIASES) {
-            if (aliases.any { alias -> lower == alias }) return marker
+            if (aliases.any { alias -> lower == alias || normalized == normalizeAutoDetectName(alias) }) return marker
         }
         return null
     }
+
+    private fun normalizeAutoDetectName(name: String): String =
+        name.trim()
+            .lowercase()
+            .replace(Regex("""[\s_\-]+"""), "")
 }
 
 // =============================================================================
@@ -799,21 +807,32 @@ object AnkiCardCreator {
             }
         }
         Marker.DOCUMENT_TITLE -> media?.mangaTitle?.let { escapeHtml(it) } ?: ""
-        else -> parseSingleGlossaryMarker(marker, result, styles, exportMedia)
+        else -> parseDynamicMarker(marker, result, styles, exportMedia)
     }
 
     // =============================================================================
-    // Single glossary marker parsing (Yomitan-style)
+    // Dynamic marker parsing (Yomitan-style)
     // =============================================================================
+
+    private fun parseDynamicMarker(
+        marker: String,
+        result: LookupResult,
+        styles: List<DictionaryStyle>,
+        exportMedia: ExportMediaContext?,
+    ): String {
+        return parseSingleGlossaryMarker(marker, result, styles, exportMedia)
+            ?: parseSingleFrequencyMarker(marker, result)
+            ?: ""
+    }
 
     private fun parseSingleGlossaryMarker(
         marker: String,
         result: LookupResult,
         styles: List<DictionaryStyle>,
         exportMedia: ExportMediaContext?,
-    ): String {
+    ): String? {
         val prefix = "single-glossary-"
-        if (!marker.startsWith(prefix)) return ""
+        if (!marker.startsWith(prefix)) return null
 
         val rest = marker.substring(prefix.length)
         if (rest.isBlank()) return ""
@@ -872,6 +891,20 @@ object AnkiCardCreator {
             styles = styles,
             exportMedia = exportMedia,
         )
+    }
+
+    private fun parseSingleFrequencyMarker(marker: String, result: LookupResult): String? {
+        return when {
+            marker.startsWith("single-frequency-number-") -> {
+                val dictionaryKey = marker.removePrefix("single-frequency-number-")
+                buildSingleFrequencyNumber(result, dictionaryKey)
+            }
+            marker.startsWith("single-frequency-") -> {
+                val dictionaryKey = marker.removePrefix("single-frequency-")
+                buildFrequenciesList(result, dictionaryKey)
+            }
+            else -> null
+        }
     }
 
     // =============================================================================
@@ -1500,20 +1533,39 @@ object AnkiCardCreator {
     // Frequencies
     // =============================================================================
 
-    private fun buildFrequenciesList(result: LookupResult): String {
+    private fun buildFrequenciesList(result: LookupResult, dictionaryKey: String? = null): String {
         if (result.term.frequencies.isEmpty()) return ""
         val sb = StringBuilder()
         sb.append("<ul data-content=\"frequencies\">")
+        var appended = false
         for (group in result.term.frequencies) {
+            if (dictionaryKey != null && !matchesDynamicDictionaryName(group.dictName, dictionaryKey)) continue
             val dictAttr = attrEscape(group.dictName)
             for (freq in group.frequencies) {
                 if (freq.value <= 0) continue
+                appended = true
                 val display = freq.displayValue.takeIf { it.isNotBlank() } ?: freq.value.toString()
-                sb.append("<li data-dictionary=\"$dictAttr\">${escapeHtml(display)}</li>")
+                sb.append("<li data-dictionary=\"$dictAttr\">")
+                if (dictionaryKey == null && group.dictName.isNotBlank()) {
+                    sb.append("${escapeHtml(group.dictName)}: ")
+                }
+                sb.append(escapeHtml(display))
+                sb.append("</li>")
             }
         }
         sb.append("</ul>")
-        return sb.toString()
+        return if (appended) sb.toString() else ""
+    }
+
+    private fun buildSingleFrequencyNumber(result: LookupResult, dictionaryKey: String): String {
+        if (dictionaryKey.isBlank()) return ""
+        return result.term.frequencies
+            .asSequence()
+            .filter { group -> matchesDynamicDictionaryName(group.dictName, dictionaryKey) }
+            .flatMap { group -> group.frequencies.asSequence() }
+            .filter { frequency -> frequency.value > 0 }
+            .map { frequency -> frequency.displayValue.takeIf { it.isNotBlank() } ?: frequency.value.toString() }
+            .joinToString("<br>") { escapeHtml(it) }
     }
 
     private fun selectLowestFrequencyValue(result: LookupResult): String? {
@@ -1562,6 +1614,12 @@ object AnkiCardCreator {
         return out
     }
 
+    private fun matchesDynamicDictionaryName(dictionaryName: String, markerDictionaryKey: String): Boolean {
+        val normalizedKey = yomitanKebabCase(markerDictionaryKey)
+        return normalizedKey.isNotBlank() &&
+            (yomitanKebabCase(dictionaryName) == normalizedKey || dictionaryName.equals(markerDictionaryKey, ignoreCase = true))
+    }
+
     // =============================================================================
     // Pitch accent
     // =============================================================================
@@ -1582,7 +1640,8 @@ object AnkiCardCreator {
 
     private fun renderPitchPosition(position: Int): String {
         val escapedPosition = escapeHtml(position.toString())
-        return """<span style="display:inline;"><span>[</span><span>$escapedPosition</span><span>]</span></span>"""
+        val attrPosition = attrEscape(position.toString())
+        return """<span class="pronunciation-downstep-notation" data-downstep-position="$attrPosition" style="display:inline;"><span class="pronunciation-downstep-notation-prefix">[</span><span class="pronunciation-downstep-notation-number">$escapedPosition</span><span class="pronunciation-downstep-notation-suffix">]</span></span>"""
     }
 
     private fun buildPitchAccents(reading: String, pitches: Array<PitchEntry>, format: PitchFormat): String {
@@ -1651,6 +1710,7 @@ object AnkiCardCreator {
 
     private fun renderOverlineText(morae: List<String>, p: Int): String {
         val sb = StringBuilder()
+        sb.append("""<span class="pronunciation" data-pronunciation-type="pitch-accent" data-pitch-accent-downstep-position="${attrEscape(p.toString())}">""")
         sb.append("""<span class="pronunciation-text" style="display:inline;">""")
         for (i in morae.indices) {
             val mora = morae[i]
@@ -1692,6 +1752,7 @@ object AnkiCardCreator {
             sb.append("""<span class="pronunciation-mora-line" style="${lineStyle.joinToString(";")}"></span>""")
             sb.append("</span>")
         }
+        sb.append("</span>")
         sb.append("</span>")
         return sb.toString()
     }
@@ -1755,6 +1816,14 @@ object AnkiCardCreator {
 
     private fun camelToKebab(name: String): String =
         name.replace(Regex("([A-Z])")) { "-${it.value.lowercase()}" }
+
+    private fun yomitanKebabCase(name: String): String =
+        name.trim()
+            .replace(Regex("""[\s_\u3000]+"""), "-")
+            .replace(Regex("""[^\p{L}\p{N}-]+"""), "")
+            .replace(Regex("""--+"""), "-")
+            .trim('-')
+            .lowercase()
 
     private fun generateScreenshotFilename(bytes: ByteArray): String {
         val hash = try {
