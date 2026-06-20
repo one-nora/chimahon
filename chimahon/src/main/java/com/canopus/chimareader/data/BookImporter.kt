@@ -104,9 +104,6 @@ object BookImporter {
                 if (ext == "html" || ext == "xhtml" || ext == "htm") {
                     preWrapBodyContent(file)
                 }
-                if (ext == "css") {
-                    cleanBookCss(file)
-                }
             }
 
             tempFile.delete()
@@ -291,59 +288,6 @@ object BookImporter {
         } catch (e: Exception) {
             Log.e(TAG, "preWrap: failed for ${file.name} — skipping", e)
         }
-    }
-
-    private fun cleanBookCss(file: File) {
-        try {
-            var text = file.readText(Charsets.UTF_8)
-            if (text.isBlank()) return
-
-            // @page blocks
-            text = text.replace(Regex("""(?is)@page\s*\{[^}]*\}\s*"""), "")
-            // -epub-* property declarations
-            text = text.replace(Regex("""[ \t]*-epub-[\w-]+\s*:[^;]+;[ \t]*\n?"""), "")
-            // writing-mode / -webkit-writing-mode
-            text = text.replace(Regex("""(?i)[ \t]*(?:-webkit-)?writing-mode\s*:[^;]+;[ \t]*\n?"""), "")
-            // column-* (column-width, column-count, column-gap, column-fill, etc.)
-            text = text.replace(Regex("""(?i)[ \t]*column-[\w-]+\s*:[^;]+;[ \t]*\n?"""), "")
-            // overflow / overflow-x / overflow-y
-            text = text.replace(Regex("""(?i)[ \t]*overflow(?:-[xy])?\s*:[^;]+;[ \t]*\n?"""), "")
-
-            // Remove entire rules targeting html/body selectors
-            text = removeHtmlBodyRules(text)
-            // Strip line-height and text-indent from all remaining rules
-            text = stripLineHeightAndTextIndent(text)
-
-            file.writeText(text, Charsets.UTF_8)
-            Log.d(TAG, "cleanCss: cleaned ${file.name}")
-        } catch (e: Exception) {
-            Log.e(TAG, "cleanCss: failed for ${file.name} — skipping", e)
-        }
-    }
-
-    private fun removeHtmlBodyRules(css: String): String {
-        // Matches a CSS selector + single-level { declarations } block.
-        // Leading '@' guard prevents mismatching inside @media bodies.
-        val blockRe = Regex("""([^{}@]+)\{([^{}]*)\}""")
-
-        // Detects the words html or body as standalone identifiers.
-        val targetSelectorRe = Regex(
-            """(?<![.\w#-])(html|body)(?![.\w-])""",
-            RegexOption.IGNORE_CASE,
-        )
-
-        return blockRe.replace(css) { match ->
-            val selector = match.groupValues[1]
-            if (targetSelectorRe.containsMatchIn(selector)) {
-                "" // remove entire rule
-            } else {
-                match.value // leave unchanged
-            }
-        }
-    }
-
-    private fun stripLineHeightAndTextIndent(css: String): String {
-        return css.replace(Regex("""(?i)[ \t]*(?:line-height|text-indent)\s*:[^;]+;[ \t]*\n?|[ \t]*text-align\s*:\s*justify\s*;[ \t]*\n?"""), "")
     }
 
     private fun md5Hex(file: File): String {

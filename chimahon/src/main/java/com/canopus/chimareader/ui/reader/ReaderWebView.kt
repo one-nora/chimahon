@@ -13,6 +13,7 @@ import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -134,6 +135,33 @@ fun ReaderWebView(
                     }
                 }
                 webViewClient = object : WebViewClient() {
+
+                    override fun shouldInterceptRequest(
+                        view: WebView?,
+                        request: WebResourceRequest?,
+                    ): WebResourceResponse? {
+                        val resourceRequest = request ?: return null
+                        if (!resourceRequest.method.equals("GET", ignoreCase = true)) return null
+
+                        val uri = resourceRequest.url
+                        if (uri.scheme != "file" || !uri.path.orEmpty().endsWith(".css", ignoreCase = true)) {
+                            return null
+                        }
+
+                        val cssFile = File(uri.path ?: return null)
+                        if (!cssFile.isFile) return null
+
+                        return runCatching {
+                            val sanitized = sanitizeReaderResource("text/css", cssFile.readBytes())
+                            WebResourceResponse(
+                                "text/css",
+                                "UTF-8",
+                                sanitized.inputStream(),
+                            )
+                        }.onFailure {
+                            Log.w("ReaderWebView", "Failed to sanitize stylesheet ${cssFile.name}", it)
+                        }.getOrNull()
+                    }
 
                     override fun shouldOverrideUrlLoading(
                         view: WebView?,
