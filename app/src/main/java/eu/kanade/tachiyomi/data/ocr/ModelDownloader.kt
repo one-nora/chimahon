@@ -11,8 +11,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import android.net.Uri
+import com.hippo.unifile.UniFile
 import java.io.File
 import java.io.FileOutputStream
+import java.io.InputStream
 import java.util.zip.ZipInputStream
 
 class ModelDownloader(
@@ -85,25 +88,41 @@ class ModelDownloader(
                 RuntimeException("Empty response body")
             )
 
-            body.byteStream().use { input ->
-                ZipInputStream(input).use { zip ->
-                    while (true) {
-                        val entry = zip.nextEntry ?: break
-                        val target = File(context.filesDir, entry.name)
-                        if (entry.isDirectory) {
-                            target.mkdirs()
-                        } else {
-                            target.parentFile?.mkdirs()
-                            FileOutputStream(target).use { out -> zip.copyTo(out) }
-                        }
-                        zip.closeEntry()
-                    }
-                }
-            }
+            body.byteStream().use { input -> extractZip(input) }
 
             return@withContext Result.success(Unit)
         } catch (e: Exception) {
             return@withContext Result.failure(e)
+        }
+    }
+
+    suspend fun importFromUri(uri: Uri): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val source = UniFile.fromUri(context, uri)
+                ?: return@withContext Result.failure(RuntimeException("Could not open file"))
+            source.openInputStream().use { extractZip(it) }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    private fun extractZip(input: InputStream): Result<Unit> {
+        try {
+            ZipInputStream(input).use { zip ->
+                while (true) {
+                    val entry = zip.nextEntry ?: break
+                    val target = File(context.filesDir, entry.name)
+                    if (entry.isDirectory) target.mkdirs()
+                    else {
+                        target.parentFile?.mkdirs()
+                        FileOutputStream(target).use { out -> zip.copyTo(out) }
+                    }
+                    zip.closeEntry()
+                }
+            }
+            return Result.success(Unit)
+        } catch (e: Exception) {
+            return Result.failure(e)
         }
     }
 }
