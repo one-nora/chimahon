@@ -95,14 +95,12 @@ object BookImporter {
             }
             tempExtractDir.renameTo(bookDir)
 
-            // Re-run normalisation and pre-wrapping on the final directory
+            // Normalize large images after moving the EPUB to its final directory.
+            // Reader layout is applied at render time; imported markup stays untouched.
             bookDir.walkTopDown().forEach { file ->
                 val ext = file.extension.lowercase()
                 if (ext == "jpg" || ext == "jpeg" || ext == "png" || ext == "webp" || ext == "gif") {
                     normaliseImageInPlace(file)
-                }
-                if (ext == "html" || ext == "xhtml" || ext == "htm") {
-                    preWrapBodyContent(file)
                 }
             }
 
@@ -259,35 +257,6 @@ object BookImporter {
             h = height / inSampleSize
         }
         return inSampleSize
-    }
-
-    private fun preWrapBodyContent(file: File) {
-        try {
-            val text = file.readText(Charsets.UTF_8)
-
-            if (text.contains("hoshi-content-wrapper")) return
-
-            val bodyTagStart = text.indexOf("<body", ignoreCase = true)
-            if (bodyTagStart < 0) return // no <body> — skip (e.g. CSS-only file)
-            val bodyTagEnd = text.indexOf('>', bodyTagStart)
-            if (bodyTagEnd < 0) return
-
-            val bodyClose = text.lastIndexOf("</body", ignoreCase = true)
-            if (bodyClose < 0 || bodyClose <= bodyTagEnd) return
-
-            val result = StringBuilder(text.length + 70)
-                .append(text, 0, bodyTagEnd + 1)
-                .append("<div id=\"hoshi-content-wrapper\">")
-                .append(text, bodyTagEnd + 1, bodyClose)
-                .append("</div>")
-                .append(text, bodyClose, text.length)
-                .toString()
-
-            file.writeText(result, Charsets.UTF_8)
-            Log.d(TAG, "preWrap: wrapped ${file.name} (${text.length} → ${result.length} bytes)")
-        } catch (e: Exception) {
-            Log.e(TAG, "preWrap: failed for ${file.name} — skipping", e)
-        }
     }
 
     private fun md5Hex(file: File): String {

@@ -701,17 +701,20 @@ private class ReaderAndroidWebView(
                 var ih = window.innerHeight;
                 var iw = window.innerWidth;
 
-                // Compute padding in px (applied on both sides of wrapper).
+                // Apply the configured percentage independently to each physical side.
                 var hPad = Math.round(iw * ${readerSettings.horizontalPadding} / 100);
                 var vPad = Math.round(ih * ${readerSettings.verticalPadding} / 100);
 
-                // Image max dimensions at 90vw.
-                // Height is full viewport (no vertical padding subtracted from images).
-                var imgMaxW = iw;
-                var imgMaxH = Math.max(1, ih);
+                // Keep the layout box inside the column, then visually scale standalone
+                // media to reclaim the padding without creating another column fragment.
+                var contentW = Math.max(1, iw - 2 * hPad);
+                var imageScale = iw / contentW;
+                var imgMaxW = contentW;
+                var imageAvailableH = Math.max(1, ih - 2 * vPad - 2);
+                var imgMaxH = Math.max(1, imageAvailableH / imageScale);
                 document.documentElement.style.setProperty('--reader-image-max-width', imgMaxW + 'px');
                 document.documentElement.style.setProperty('--reader-image-max-height', imgMaxH + 'px');
-                document.documentElement.style.setProperty('--reader-h-pad', hPad + 'px');
+                document.documentElement.style.setProperty('--reader-image-scale', imageScale);
 
                 var s = document.getElementById('hoshi-style');
                 if (s) s.remove();
@@ -726,11 +729,25 @@ private class ReaderAndroidWebView(
                 contImgStyle = document.createElement('style');
                 contImgStyle.id = 'reader-cont-img-style';
                 contImgStyle.textContent = [
-                    '#hoshi-content-wrapper .block-img-container {',
-                    '  margin-left: calc(-1 * var(--reader-h-pad, 0px)) !important;',
-                    '  margin-right: calc(-1 * var(--reader-h-pad, 0px)) !important;',
-                    '  width: var(--reader-image-max-width, 95vw) !important;',
-                    '  text-align: center !important;',
+                    '.full-bleed-img-container {',
+                    '  box-sizing: border-box !important;',
+                    '  width: 100% !important;',
+                    '  max-width: 100% !important;',
+                    '  display: flex !important;',
+                    '  align-items: center !important;',
+                    '  justify-content: center !important;',
+                    '  overflow: visible !important;',
+                    '  line-height: 0 !important;',
+                    '  margin: 0 !important;',
+                    '  padding: 0 !important;',
+                    '  border: 0 !important;',
+                    '  break-inside: avoid !important;',
+                    '  page-break-inside: avoid !important;',
+                    '  -webkit-column-break-inside: avoid !important;',
+                    '}',
+                    'img.full-bleed-img, svg.full-bleed-img {',
+                    '  transform: scale(var(--reader-image-scale, 1)) !important;',
+                    '  transform-origin: center center !important;',
                     '}',
                     'img.block-img, svg.block-img {',
                     '  max-width: var(--reader-image-max-width, 95vw) !important;',
@@ -764,34 +781,23 @@ private class ReaderAndroidWebView(
                 var b = document.body;
                 if (!b) { window.hoshiReader.notifyRestoreComplete(); return; }
 
-                // Ensure content wrapper existence for consistent styling.
-                var wrapper = document.getElementById('hoshi-content-wrapper');
-                if (!wrapper) {
-                    wrapper = document.createElement('div');
-                    wrapper.id = 'hoshi-content-wrapper';
-                    while (b.firstChild) wrapper.appendChild(b.firstChild);
-                    b.appendChild(wrapper);
-                }
-
-                wrapper.style.setProperty('padding', vPad + 'px ' + hPad + 'px', 'important');
-                wrapper.style.setProperty('-webkit-box-decoration-break', 'clone', 'important');
-                wrapper.style.setProperty('box-decoration-break', 'clone', 'important');
-                b.style.setProperty('padding', '0', 'important');
+                b.style.setProperty('padding', vPad + 'px ' + hPad + 'px', 'important');
                 b.style.setProperty('margin', '0', 'important');
+                b.style.setProperty('box-sizing', 'border-box', 'important');
 
-                wrapper.style.setProperty('font-size', '${readerSettings.fontSize}px', 'important');
-                wrapper.style.setProperty('line-height', '${readerSettings.lineHeight}', 'important');
+                b.style.setProperty('font-size', '${readerSettings.fontSize}px', 'important');
+                b.style.setProperty('line-height', '${readerSettings.lineHeight}', 'important');
                 ${paragraphSpacingJS(readerSettings)}
                 ${if (readerSettings.layoutAdvanced) {
             """
-                wrapper.style.setProperty('letter-spacing', '${readerSettings.characterSpacing}em', 'important');
+                b.style.setProperty('letter-spacing', '${readerSettings.characterSpacing}em', 'important');
                 """
         } else {
             ""
         }}
-                wrapper.style.setProperty('text-align', ${if (readerSettings.justifyText) "'justify'" else "'left'"}, 'important');
+                b.style.setProperty('text-align', ${if (readerSettings.justifyText) "'justify'" else "'left'"}, 'important');
 
-                ${fontJS(readerSettings, "wrapper")}
+                ${fontJS(readerSettings, "b")}
                 ${themeJS(bg, tc)}
                 ${furiganaJS(readerSettings)}
 
@@ -836,8 +842,24 @@ private class ReaderAndroidWebView(
                                 }
                                 if (isLarge) {
                                     el.classList.add('block-img');
-                                    if (el.parentElement) {
-                                        el.parentElement.classList.add('block-img-container');
+                                    var mediaContainer = el.parentElement;
+                                    if (mediaContainer && mediaContainer !== b && mediaContainer !== document.documentElement) {
+                                        mediaContainer.classList.add('block-img-container');
+                                        var hasContentSibling = Array.from(mediaContainer.childNodes).some(function(n) {
+                                            if (n === el) return false;
+                                            if (n.nodeType === Node.TEXT_NODE) return n.textContent.trim().length > 0;
+                                            return n.nodeType === Node.ELEMENT_NODE &&
+                                                !['BR', 'WBR'].includes(n.tagName);
+                                        });
+                                        if (!hasContentSibling) {
+                                            el.classList.add('full-bleed-img');
+                                            mediaContainer.classList.add('full-bleed-img-container');
+                                            mediaContainer.style.setProperty(
+                                                'height',
+                                                Math.ceil(el.offsetHeight * imageScale) + 'px',
+                                                'important'
+                                            );
+                                        }
                                     }
                                 }
                             }
@@ -890,16 +912,21 @@ private class ReaderAndroidWebView(
                 var ih = window.innerHeight;
                 var iw = window.innerWidth;
 
-                // Compute padding in px (applied on both sides of wrapper).
+                // Apply the configured percentage independently to each physical side.
                 var hPad = Math.round(iw * ${readerSettings.horizontalPadding} / 100);
                 var vPad = Math.round(ih * ${readerSettings.verticalPadding} / 100);
+                var bottomOverlap = $bottomOverlapPx;
 
-                // Image max dimensions at 90vw.
-                // Height is viewport less bottomOverlap (for vertical-rl column bleed).
-                var imgMaxW = iw;
-                var imgMaxH = Math.max(1, ih - $bottomOverlapPx);
+                // Keep the layout box inside the column, then visually scale standalone
+                // media to reclaim the padding without creating another column fragment.
+                var contentW = Math.max(1, iw - 2 * hPad);
+                var imageScale = iw / contentW;
+                var imgMaxW = contentW;
+                var imageAvailableH = Math.max(1, ih - 2 * vPad - bottomOverlap - 2);
+                var imgMaxH = Math.max(1, imageAvailableH / imageScale);
                 document.documentElement.style.setProperty('--reader-image-max-width', imgMaxW + 'px');
                 document.documentElement.style.setProperty('--reader-image-max-height', imgMaxH + 'px');
+                document.documentElement.style.setProperty('--reader-image-scale', imageScale);
 
                 var s = document.getElementById('hoshi-style');
                 if (s) s.remove();
@@ -913,6 +940,26 @@ private class ReaderAndroidWebView(
                 blockImgStyle = document.createElement('style');
                 blockImgStyle.id = 'reader-block-img-style';
                 blockImgStyle.textContent = [
+                    '.full-bleed-img-container {',
+                    '  box-sizing: border-box !important;',
+                    '  width: 100% !important;',
+                    '  max-width: 100% !important;',
+                    '  display: flex !important;',
+                    '  align-items: center !important;',
+                    '  justify-content: center !important;',
+                    '  overflow: visible !important;',
+                    '  line-height: 0 !important;',
+                    '  margin: 0 !important;',
+                    '  padding: 0 !important;',
+                    '  border: 0 !important;',
+                    '  break-inside: avoid !important;',
+                    '  page-break-inside: avoid !important;',
+                    '  -webkit-column-break-inside: avoid !important;',
+                    '}',
+                    'img.full-bleed-img, svg.full-bleed-img {',
+                    '  transform: scale(var(--reader-image-scale, 1)) !important;',
+                    '  transform-origin: center center !important;',
+                    '}',
                     'img.block-img, svg.block-img {',
                     '  max-width: var(--reader-image-max-width, 95vw) !important;',
                     '  max-height: var(--reader-image-max-height, 95vh) !important;',
@@ -947,32 +994,26 @@ private class ReaderAndroidWebView(
                 var b = document.body;
                 if (!b) { window.hoshiReader.notifyRestoreComplete(); return; }
 
-                // Ensure content wrapper existence for consistent styling.
-                var wrapper = document.getElementById('hoshi-content-wrapper');
-                if (!wrapper) {
-                    wrapper = document.createElement('div');
-                    wrapper.id = 'hoshi-content-wrapper';
-                    while (b.firstChild) wrapper.appendChild(b.firstChild);
-                    b.appendChild(wrapper);
-                }
-
-                wrapper.style.setProperty('padding', vPad + 'px ' + hPad + 'px', 'important');
-                wrapper.style.setProperty('-webkit-box-decoration-break', 'clone', 'important');
-                wrapper.style.setProperty('box-decoration-break', 'clone', 'important');
-                b.style.setProperty('padding', '0', 'important');
+                // Match Hoshi's pagination model: the multicol container owns both the
+                // page padding and the gap between page columns.
+                b.style.setProperty(
+                    'padding',
+                    vPad + 'px ' + hPad + 'px ' + (vPad + bottomOverlap) + 'px ' + hPad + 'px',
+                    'important'
+                );
                 b.style.setProperty('margin', '0', 'important');
 
-                wrapper.style.setProperty('font-size', '${readerSettings.fontSize}px', 'important');
-                wrapper.style.setProperty('line-height', '${readerSettings.lineHeight}', 'important');
+                b.style.setProperty('font-size', '${readerSettings.fontSize}px', 'important');
+                b.style.setProperty('line-height', '${readerSettings.lineHeight}', 'important');
                 ${paragraphSpacingJS(readerSettings)}
                 ${if (readerSettings.layoutAdvanced) {
             """
-                wrapper.style.setProperty('letter-spacing', '${readerSettings.characterSpacing}em', 'important');
+                b.style.setProperty('letter-spacing', '${readerSettings.characterSpacing}em', 'important');
                 """
         } else {
             ""
         }}
-                wrapper.style.setProperty('text-align', ${if (readerSettings.justifyText) "'justify'" else "'left'"}, 'important');
+                b.style.setProperty('text-align', ${if (readerSettings.justifyText) "'justify'" else "'left'"}, 'important');
 
                 ${if (readerSettings.avoidPageBreak) {
             """
@@ -991,7 +1032,7 @@ private class ReaderAndroidWebView(
             ""
         }}
 
-                ${fontJS(readerSettings, "wrapper")}
+                ${fontJS(readerSettings, "b")}
                 ${themeJS(bg, tc)}
                 ${furiganaJS(readerSettings)}
 
@@ -1013,14 +1054,15 @@ private class ReaderAndroidWebView(
                 if (vw) {
                     b.style.setProperty('column-width', ih + 'px', 'important');
                     b.style.setProperty('min-height', ih + 'px', 'important');
+                    b.style.setProperty('column-gap', (2 * vPad + bottomOverlap) + 'px', 'important');
                 } else {
                     b.style.setProperty('column-width', iw + 'px', 'important');
                     b.style.setProperty('height', ih + 'px', 'important');
+                    b.style.setProperty('column-gap', (2 * hPad) + 'px', 'important');
                 }
                 b.style.setProperty('box-sizing', 'border-box', 'important');
                 b.style.setProperty('width', iw + 'px', 'important');
                 b.style.setProperty('column-fill', 'auto', 'important');
-                b.style.setProperty('column-gap', '0px', 'important');
                 b.style.setProperty('touch-action', 'none', 'important');
                 document.documentElement.style.setProperty('overflow', 'hidden', 'important');
 
@@ -1048,8 +1090,24 @@ private class ReaderAndroidWebView(
                                 }
                                 if (isLarge) {
                                     el.classList.add('block-img');
-                                    if (el.parentElement) {
-                                        el.parentElement.classList.add('block-img-container');
+                                    var mediaContainer = el.parentElement;
+                                    if (mediaContainer && mediaContainer !== b && mediaContainer !== document.documentElement) {
+                                        mediaContainer.classList.add('block-img-container');
+                                        var hasContentSibling = Array.from(mediaContainer.childNodes).some(function(n) {
+                                            if (n === el) return false;
+                                            if (n.nodeType === Node.TEXT_NODE) return n.textContent.trim().length > 0;
+                                            return n.nodeType === Node.ELEMENT_NODE &&
+                                                !['BR', 'WBR'].includes(n.tagName);
+                                        });
+                                        if (!hasContentSibling) {
+                                            el.classList.add('full-bleed-img');
+                                            mediaContainer.classList.add('full-bleed-img-container');
+                                            mediaContainer.style.setProperty(
+                                                'height',
+                                                Math.ceil(el.offsetHeight * imageScale) + 'px',
+                                                'important'
+                                            );
+                                        }
                                     }
                                 }
                             }
@@ -1064,19 +1122,7 @@ private class ReaderAndroidWebView(
                     });
                 });
                 Promise.all(imagePromises)
-                    .then(function() {
-                        // If page has only block images (no text), remove horizontal padding
-                        // so images center cleanly without multicol clipping.
-                        var hasBlockImg = wrapper.querySelector('.block-img-container') !== null;
-                        var hasText = wrapper.innerText.trim().length > 0;
-                        if (hasBlockImg && !hasText) {
-                            wrapper.style.setProperty('padding', '0', 'important');
-                            wrapper.style.setProperty('display', 'flex', 'important');
-                            wrapper.style.setProperty('align-items', 'center', 'important');
-                            wrapper.style.setProperty('justify-content', 'center', 'important');
-                        }
-                        return new Promise(function(r) { setTimeout(r, 50); });
-                    })
+                    .then(function() { return new Promise(function(r) { setTimeout(r, 50); }); })
                     .then(function() {
                         window.hoshiReader.restoreProgress($pendingProgress, ${if (vw) "true" else "false"});
                     });
@@ -1105,43 +1151,61 @@ private class ReaderAndroidWebView(
             (function() {
                 var b = document.body;
                 if (!b) return;
-                var wrapper = document.getElementById('hoshi-content-wrapper');
-                if (!wrapper) {
-                    wrapper = document.createElement('div');
-                    wrapper.id = 'hoshi-content-wrapper';
-                    while (b.firstChild) wrapper.appendChild(b.firstChild);
-                    b.appendChild(wrapper);
-                }
-
                 var iw = window.innerWidth;
                 var ih = window.innerHeight;
                 var hPad = Math.round(iw * ${settings.horizontalPadding} / 100);
                 var vPad = Math.round(ih * ${settings.verticalPadding} / 100);
-                wrapper.style.setProperty('padding', vPad + 'px ' + hPad + 'px', 'important');
-                wrapper.style.setProperty('-webkit-box-decoration-break', 'clone', 'important');
-                wrapper.style.setProperty('box-decoration-break', 'clone', 'important');
-                b.style.setProperty('padding', '0', 'important');
+                var bottomOverlap = ${if (settings.verticalWriting && !continuousMode) settings.fontSize else 0};
+                var contentW = Math.max(1, iw - 2 * hPad);
+                var imageScale = iw / contentW;
+                var imgMaxW = contentW;
+                var imageAvailableH = Math.max(1, ih - 2 * vPad - bottomOverlap - 2);
+                var imgMaxH = Math.max(1, imageAvailableH / imageScale);
+                document.documentElement.style.setProperty('--reader-image-max-width', imgMaxW + 'px');
+                document.documentElement.style.setProperty('--reader-image-max-height', imgMaxH + 'px');
+                document.documentElement.style.setProperty('--reader-image-scale', imageScale);
+                Array.from(document.querySelectorAll('.full-bleed-img')).forEach(function(el) {
+                    if (el.parentElement) {
+                        el.parentElement.style.setProperty(
+                            'height',
+                            Math.ceil(el.offsetHeight * imageScale) + 'px',
+                            'important'
+                        );
+                    }
+                });
+                b.style.setProperty(
+                    'padding',
+                    vPad + 'px ' + hPad + 'px ' + (vPad + bottomOverlap) + 'px ' + hPad + 'px',
+                    'important'
+                );
                 b.style.setProperty('margin', '0', 'important');
+                b.style.setProperty('box-sizing', 'border-box', 'important');
+                if (!${if (continuousMode) "true" else "false"}) {
+                    b.style.setProperty(
+                        'column-gap',
+                        (${if (settings.verticalWriting) "2 * vPad + bottomOverlap" else "2 * hPad"}) + 'px',
+                        'important'
+                    );
+                }
 
-                wrapper.style.setProperty('font-size', '${settings.fontSize}px', 'important');
                 b.style.setProperty('font-size', '${settings.fontSize}px', 'important');
 
-                wrapper.style.setProperty('line-height', '${settings.lineHeight}', 'important');
+                b.style.setProperty('line-height', '${settings.lineHeight}', 'important');
                 ${paragraphSpacingJS(settings)}
                 ${if (settings.layoutAdvanced) {
             """
-                wrapper.style.setProperty('letter-spacing', '${settings.characterSpacing}em', 'important');
+                b.style.setProperty('letter-spacing', '${settings.characterSpacing}em', 'important');
                 """
         } else {
             ""
         }}
 
-                wrapper.style.setProperty('text-align', ${if (settings.justifyText) "'justify'" else "'left'"}, 'important');
+                b.style.setProperty('text-align', ${if (settings.justifyText) "'justify'" else "'left'"}, 'important');
 
-                ${fontJS(settings, "wrapper")}
+                ${fontJS(settings, "b")}
 
                 b.style.setProperty('background-color', '$bg', 'important');
-                wrapper.style.setProperty('color', '$tc', 'important');
+                b.style.setProperty('color', '$tc', 'important');
                 document.documentElement.style.setProperty('background-color', '$bg', 'important');
 
                 ${furiganaJS(settings)}
@@ -1345,7 +1409,7 @@ private fun jsEscape(value: String): String = value
     .replace("\n", "\\n")
     .replace("\r", "\\r")
 
-private fun fontJS(settings: ReaderSettings, wrapperVar: String): String = buildString {
+private fun fontJS(settings: ReaderSettings, targetVar: String): String = buildString {
     val fontUrl = settings.fontUrl
     if (!fontUrl.isNullOrBlank()) {
         appendLine(
@@ -1354,7 +1418,7 @@ private fun fontJS(settings: ReaderSettings, wrapperVar: String): String = build
             fontFace.textContent = "@font-face { font-family: 'HoshiCustomFont'; src: url('${jsEscape(fontUrl)}'); }";
             document.head.appendChild(fontFace);
             document.fonts.ready.then(function() {
-                $wrapperVar.style.setProperty('font-family', 'HoshiCustomFont', 'important');
+                $targetVar.style.setProperty('font-family', 'HoshiCustomFont', 'important');
             });
             """.trimIndent(),
         )
@@ -1365,13 +1429,13 @@ private fun fontJS(settings: ReaderSettings, wrapperVar: String): String = build
         } else if (ff == "System Sans-Serif") {
             ff = "sans-serif"
         }
-        appendLine("$wrapperVar.style.setProperty('font-family', '${jsEscape(ff)}', 'important');")
+        appendLine("$targetVar.style.setProperty('font-family', '${jsEscape(ff)}', 'important');")
     }
 }
 
 private fun themeJS(bg: String, tc: String): String = """
     b.style.setProperty('background-color', '$bg', 'important');
-    wrapper.style.setProperty('color', '$tc', 'important');
+    b.style.setProperty('color', '$tc', 'important');
     document.documentElement.style.setProperty('background-color', '$bg', 'important');
 """.trimIndent()
 
