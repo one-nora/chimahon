@@ -4,6 +4,26 @@ All notable changes to Chimahon are documented here.
 
 The format follows a Keep a Changelog style and uses Semantic Versioning.
 
+## [v2.0.0]
+
+### Added
+- Anime support
+- Local OCR model import from device storage (advanced settings)
+- Use word audio from public storage without copying
+
+### Changed
+- Reworked screen lookup overlay (transparent background, tap-to-dismiss, no system bar crop)
+- OCR crop remapper now reads from native decoder — matches displayed crop exactly
+- Bundled armeabi-v7a and x86 hoshidict
+
+### Fixed
+- Reader image centering, padding, width, and EPUB style sanitization
+- Novel reader image rendering and paginated restoration hangs
+- Dictionary font-size setting now controls all structured content
+- Sokuon (促音) pitch accent in Anki export
+- OCR mixed-orientation text reordering
+- MonetColorScheme crash when WallpaperManager returns null
+
 ## [v1.9.5]
 
 ### Fixed
