@@ -254,7 +254,8 @@ data object BrowseTab : Tab {
                     state = pagerState,
                     verticalAlignment = Alignment.Top,
                 ) { page ->
-                    currentTabs[page].content(
+                    val tab = currentTabs.getOrNull(page) ?: return@HorizontalPager
+                    tab.content(
                         PaddingValues(bottom = contentPadding.calculateBottomPadding()),
                         snackbarHostState,
                     )
