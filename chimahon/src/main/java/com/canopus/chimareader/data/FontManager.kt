@@ -18,7 +18,7 @@ object FontManager {
         return "file://${file.absolutePath}"
     }
 
-    private fun getFontsDir(context: Context): File {
+    fun getFontsDir(context: Context): File {
         val dir = File(context.filesDir, "fonts")
         if (!dir.exists()) {
             dir.mkdirs()

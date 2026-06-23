@@ -103,10 +103,6 @@ class StorageManager(
         return baseDir?.createDirectory("$MPV_CONFIG_PATH/$SCRIPT_OPTS_PATH")
     }
 
-    fun getFontsDirectory(): UniFile? {
-        return baseDir?.createDirectory("$MPV_CONFIG_PATH/fonts")
-    }
-
     // SY -->
     fun getLogsDirectory(): UniFile? {
         return baseDir?.createDirectory(LOGS_PATH)

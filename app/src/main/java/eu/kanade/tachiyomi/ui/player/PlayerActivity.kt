@@ -523,7 +523,7 @@ class PlayerActivity : BaseActivity() {
 
         copyScripts()
         copyAssets(configDir)
-        copyFontsDirectory()
+        setupFontsDirectory()
 
         MPVLib.setOptionString("sub-ass-force-margins", "yes")
         MPVLib.setOptionString("sub-use-margins", "yes")
@@ -605,28 +605,17 @@ class PlayerActivity : BaseActivity() {
         }
     }
 
-    private fun copyFontsDirectory() {
-        // TODO: I think this is a bad hack.
-        //  We need to find a way to let MPV directly access our fonts directory.
-        CoroutineScope(Dispatchers.IO).launchIO {
-            val fontsDirFiles = storageManager.getFontsDirectory()?.listFiles()
-            if (fontsDirFiles != null) {
-                for (font in fontsDirFiles) {
-                    val outFile = UniFile.fromFile(applicationContext.filesDir)?.createFile(font.name)
-                    outFile?.let {
-                        font.openInputStream().copyTo(it.openOutputStream())
-                    }
-                }
-            }
-            MPVLib.setPropertyString(
-                "sub-fonts-dir",
-                applicationContext.filesDir.path,
-            )
-            MPVLib.setPropertyString(
-                "osd-fonts-dir",
-                applicationContext.filesDir.path,
-            )
-        }
+    private fun setupFontsDirectory() {
+        val fontsDir = com.canopus.chimareader.data.FontManager.getFontsDir(applicationContext)
+        if (!fontsDir.exists()) fontsDir.mkdirs()
+        MPVLib.setPropertyString(
+            "sub-fonts-dir",
+            fontsDir.path,
+        )
+        MPVLib.setPropertyString(
+            "osd-fonts-dir",
+            fontsDir.path,
+        )
     }
 
     fun setupCustomButtons(buttons: List<CustomButton>) {

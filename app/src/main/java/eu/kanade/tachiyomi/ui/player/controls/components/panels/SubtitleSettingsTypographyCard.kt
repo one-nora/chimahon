@@ -54,6 +54,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import com.yubyf.truetypeparser.TTFFile
@@ -72,7 +73,6 @@ import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import tachiyomi.core.common.preference.deleteAndGet
-import tachiyomi.domain.storage.service.StorageManager
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.material.padding
 import tachiyomi.presentation.core.i18n.stringResource
@@ -85,10 +85,8 @@ fun SubtitleSettingsTypographyCard(
     modifier: Modifier = Modifier,
 ) {
     val preferences = remember { Injekt.get<SubtitlePreferences>() }
-    val storageManager = remember { Injekt.get<StorageManager>() }
     var isExpanded by remember { mutableStateOf(true) }
 
-    val fontsDir = storageManager.getFontsDirectory()
     val fonts by remember { mutableStateOf(mutableListOf(preferences.subtitleFont().defaultValue())) }
     var fontsLoadingIndicator: (@Composable () -> Unit)? by remember {
         val indicator: (@Composable () -> Unit) = {
@@ -96,18 +94,16 @@ fun SubtitleSettingsTypographyCard(
         }
         mutableStateOf(indicator)
     }
+    val context = LocalContext.current
     LaunchedEffect(Unit) {
-        if (fontsDir == null) {
-            fontsLoadingIndicator = null
-            return@LaunchedEffect
-        }
+        val fontsDir = com.canopus.chimareader.data.FontManager.getFontsDir(context)
         withContext(Dispatchers.IO) {
             val fontFiles = fontsDir.listFiles()
             if (fontFiles != null) {
-                val matchedFonts = fontFiles.filter { uniFile ->
-                    uniFile.name?.lowercase()?.matches(FONT_EXTENSION_REGEX) == true
-                }.mapNotNull { uniFile ->
-                    runCatching { TTFFile.open(uniFile.openInputStream()).families.values.first() }.getOrNull()
+                val matchedFonts = fontFiles.filter { file ->
+                    file.name.lowercase().matches(FONT_EXTENSION_REGEX)
+                }.mapNotNull { file ->
+                    runCatching { TTFFile.open(file.inputStream()).families.values.first() }.getOrNull()
                 }
                 fonts.addAll(matchedFonts.distinct())
             }
