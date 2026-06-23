@@ -19,6 +19,7 @@ package eu.kanade.presentation.player.components
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddCircle
@@ -35,6 +36,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.material.padding
@@ -52,6 +56,8 @@ fun OutlinedNumericChooser(
     label: (@Composable () -> Unit)? = null,
 ) {
     assert(max > min) { "min can't be larger than max ($min > $max)" }
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
     Row(
         modifier = modifier,
         verticalAlignment = Alignment.CenterVertically,
@@ -86,7 +92,17 @@ fun OutlinedNumericChooser(
             },
             suffix = suffix,
             modifier = Modifier.weight(1f),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            maxLines = 1,
+            keyboardOptions = KeyboardOptions(
+                keyboardType = KeyboardType.Number,
+                imeAction = ImeAction.Done,
+            ),
+            keyboardActions = KeyboardActions(
+                onDone = {
+                    keyboardController?.hide()
+                    focusManager.clearFocus()
+                },
+            ),
         )
         RepeatingIconButton(onClick = { onChange(value + step) }) {
             Icon(Icons.Filled.AddCircle, null)
@@ -106,6 +122,8 @@ fun OutlinedNumericChooser(
     label: (@Composable () -> Unit)? = null,
 ) {
     assert(max > min) { "min can't be larger than max ($min > $max)" }
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
     Row(
         modifier,
         verticalAlignment = Alignment.CenterVertically,
@@ -142,7 +160,16 @@ fun OutlinedNumericChooser(
             modifier = Modifier.weight(1f),
             maxLines = 1,
             suffix = suffix,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            keyboardOptions = KeyboardOptions(
+                keyboardType = KeyboardType.Number,
+                imeAction = ImeAction.Done,
+            ),
+            keyboardActions = KeyboardActions(
+                onDone = {
+                    keyboardController?.hide()
+                    focusManager.clearFocus()
+                },
+            ),
         )
         RepeatingIconButton(onClick = { onChange(value + step) }) {
             Icon(Icons.Filled.AddCircle, null)
