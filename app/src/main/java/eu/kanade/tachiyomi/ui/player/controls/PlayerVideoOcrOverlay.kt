@@ -23,7 +23,6 @@ internal fun PlayerVideoOcrOverlay(
     viewModel: PlayerViewModel,
     screenshot: Bitmap?,
     onDismiss: () -> Unit,
-    onRecapture: () -> Unit,
 ) {
     if (screenshot == null) return
 
@@ -55,7 +54,6 @@ internal fun PlayerVideoOcrOverlay(
         webView = webView,
         activeProfile = activeProfile,
         onClose = onDismiss,
-        onRecapture = onRecapture,
         type = "anime",
         mediaInfo = MediaInfo(
             mangaTitle = anime?.title.orEmpty(),

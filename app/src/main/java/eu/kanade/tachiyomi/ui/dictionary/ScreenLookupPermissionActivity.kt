@@ -47,6 +47,7 @@ class ScreenLookupPermissionActivity : BaseActivity() {
         val data = result.data
         if (result.resultCode == Activity.RESULT_OK && data != null) {
             ScreenLookupService.start(this, result.resultCode, data)
+            moveTaskToBack(true)
         } else {
             Toast.makeText(this, this.contextStringResource(MR.strings.screen_lookup_capture_denied), Toast.LENGTH_SHORT).show()
         }

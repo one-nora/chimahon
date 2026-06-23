@@ -7,7 +7,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.graphics.Bitmap
-import android.graphics.Insets
 import android.graphics.PixelFormat
 import android.graphics.drawable.GradientDrawable
 import android.hardware.display.DisplayManager
@@ -24,8 +23,6 @@ import android.os.Looper
 import android.provider.Settings
 import android.util.DisplayMetrics
 import android.view.Gravity
-import android.view.WindowInsets
-import android.view.WindowMetrics
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
@@ -51,7 +48,6 @@ import logcat.LogPriority
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.i18n.MR
-import kotlin.coroutines.resume
 import kotlin.math.roundToInt
 
 object ScreenLookupServiceState {
@@ -73,8 +69,6 @@ class ScreenLookupService : Service() {
     private var floatingButtonParams: WindowManager.LayoutParams? = null
     private var captureJob: Job? = null
     private var overlayController: ScreenLookupOverlayController? = null
-    private var cachedCaptureSize: CaptureSize? = null
-
     private val windowManager: WindowManager
         get() = getSystemService()!!
 
@@ -241,7 +235,6 @@ class ScreenLookupService : Service() {
 
         imageReader = newReader
         virtualDisplaySize = size
-        cachedCaptureSize = null
         oldReader?.close()
     }
 
@@ -253,11 +246,8 @@ class ScreenLookupService : Service() {
         if (captureJob?.isActive == true) return
 
         captureJob = scope.launch {
-            setFloatingButtonVisible(false)
-
             val bitmap = captureWithProjection()
             if (bitmap == null) {
-                setFloatingButtonVisible(true)
                 toast(MR.strings.screen_lookup_capture_failed)
                 lastCaptureError?.let { msg ->
                     Toast.makeText(this@ScreenLookupService, "Error: $msg", Toast.LENGTH_LONG).show()
@@ -282,70 +272,7 @@ class ScreenLookupService : Service() {
                     logcat(LogPriority.ERROR, e) { "capture failed" }
                 }
                 .getOrNull()
-                ?.let { cropSystemBars(it) }
         }
-    }
-
-    /**
-     * Crop the status bar and navigation bar from a full-screen capture so the
-     * OCR overlay only shows the app content area.
-     *
-     * On API 30+ uses [WindowInsets] from [WindowMetrics] for precise inset
-     * values that account for gesture navigation, cutouts, and OEM quirks.
-     * On older versions falls back to framework resource lookups
-     * (status_bar_height / navigation_bar_height) which work reliably on
-     * pre-R devices where 3-button nav was the default.
-     */
-    private fun cropSystemBars(bitmap: Bitmap): Bitmap {
-        val (statusBarPx, navBarPx) = systemBarInsetsPx()
-        val cropTop = statusBarPx
-        val cropBottom = bitmap.height - navBarPx
-        if (cropTop <= 0 && navBarPx <= 0) return bitmap
-        if (cropTop >= cropBottom || cropBottom <= 0 || bitmap.width <= 0) return bitmap
-        val cropped = Bitmap.createBitmap(bitmap, 0, cropTop, bitmap.width, cropBottom - cropTop)
-        if (cropped !== bitmap) bitmap.recycle()
-        return cropped
-    }
-
-    /**
-     * Returns (statusBarHeightPx, navBarHeightPx) using the best API available.
-     *
-     * API 30+: [WindowMetrics.getWindowInsets] gives exact pixel insets that
-     * match what the compositor actually rendered — correct for gesture nav
-     * (where nav inset may be 0 or just the gesture handle), cutouts, and
-     * OEM-specific inset overrides.
-     *
-     * API <30: Falls back to resource-ID lookups on the android package.
-     * These are not public API but have been stable since API 1 and match
-     * the pre-R world where 3-button navigation was the only option.
-     */
-    private fun systemBarInsetsPx(): Pair<Int, Int> {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            try {
-                val display = getSystemService<DisplayManager>()
-                    ?.getDisplay(Display.DEFAULT_DISPLAY)
-                if (display != null) {
-                    val wm = createDisplayContext(display)
-                        .createWindowContext(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, null)
-                        .getSystemService<WindowManager>()
-                    val metrics = wm?.currentWindowMetrics
-                    if (metrics != null) {
-                        val insets = metrics.windowInsets
-                            .getInsets(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
-                        return Pair(insets.top, insets.bottom)
-                    }
-                }
-            } catch (_: Exception) {}
-        }
-        // Fallback: framework resource IDs (works on all API levels)
-        val statusBar = getSystemBarHeight("status_bar_height")
-        val navBar = getSystemBarHeight("navigation_bar_height")
-        return Pair(statusBar, navBar)
-    }
-
-    private fun getSystemBarHeight(dimensName: String): Int {
-        val resourceId = resources.getIdentifier(dimensName, "dimen", "android")
-        return if (resourceId > 0) resources.getDimensionPixelSize(resourceId) else 0
     }
 
     private suspend fun acquireBitmap(): Bitmap? {
@@ -364,9 +291,16 @@ class ScreenLookupService : Service() {
             context = this,
             windowManager = windowManager,
             onDismiss = { setFloatingButtonVisible(true) },
-            onRecapture = { captureFromButton() },
         ).also { overlayController = it }
         controller.show(bitmap)
+        bringFloatingButtonToFront()
+    }
+
+    private fun bringFloatingButtonToFront() {
+        val btn = floatingButton ?: return
+        val params = floatingButtonParams ?: return
+        runCatching { windowManager.removeView(btn) }
+        windowManager.addView(btn, params)
     }
 
     private fun Image.toBitmap(): Bitmap {
@@ -506,12 +440,7 @@ class ScreenLookupService : Service() {
         projection = null
     }
 
-    private fun captureSize(): CaptureSize {
-        cachedCaptureSize?.let { return it }
-        val size = resolveCaptureSize()
-        cachedCaptureSize = size
-        return size
-    }
+    private fun captureSize(): CaptureSize = resolveCaptureSize()
 
     private fun resolveCaptureSize(): CaptureSize {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -522,7 +451,7 @@ class ScreenLookupService : Service() {
                     val wm = createDisplayContext(display)
                         .createWindowContext(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, null)
                         .getSystemService<WindowManager>()
-                    val bounds = wm?.maximumWindowMetrics?.bounds
+                    val bounds = wm?.currentWindowMetrics?.bounds
                     if (bounds != null && bounds.width() > 0 && bounds.height() > 0) {
                         return CaptureSize(bounds.width(), bounds.height())
                     }

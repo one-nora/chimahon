@@ -4,28 +4,20 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.PixelFormat
 import android.view.Gravity
+import android.os.Build
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.webkit.WebView
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Close
-import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -36,17 +28,14 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -81,13 +70,13 @@ import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import chimahon.MediaInfo
 
+
 private const val TAP_HINT_DURATION_MS = 1_200L
 
 internal class ScreenLookupOverlayController(
     private val context: Context,
     private val windowManager: WindowManager,
     private val onDismiss: () -> Unit,
-    private val onRecapture: () -> Unit,
 ) {
     private var overlayView: ComposeView? = null
     private var lifecycleOwner: OverlayLifecycleOwner? = null
@@ -126,10 +115,6 @@ internal class ScreenLookupOverlayController(
                     webView = webView,
                     activeProfile = profile,
                     onClose = { dismiss() },
-                    onRecapture = {
-                        dismiss(recycleScreenshot = true, notify = false)
-                        onRecapture()
-                    },
                 )
             }
         }
@@ -138,11 +123,18 @@ internal class ScreenLookupOverlayController(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.TOP or Gravity.START
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                fitInsetsTypes = 0
+            } else {
+                @Suppress("DEPRECATION")
+                flags = flags or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+            }
+            layoutInDisplayCutoutMode =
+                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
         }
 
         windowManager.addView(view, params)
@@ -223,7 +215,6 @@ internal fun ScreenLookupOverlay(
     webView: WebView,
     activeProfile: chimahon.anki.AnkiProfile,
     onClose: () -> Unit,
-    onRecapture: () -> Unit,
     type: String = "screen",
     mediaInfo: MediaInfo? = null,
     titleId: String? = null,
@@ -231,7 +222,6 @@ internal fun ScreenLookupOverlay(
 ) {
     val context = LocalContext.current
     val localDensity = LocalDensity.current
-    val scope = rememberCoroutineScope()
     val repository = remember { Injekt.get<DictionaryRepository>() }
     val dictionaryPreferences = remember { Injekt.get<DictionaryPreferences>() }
     val boxScaleX = dictionaryPreferences.ocrBoxScaleX().get()
@@ -280,18 +270,10 @@ internal fun ScreenLookupOverlay(
 
     BoxWithConstraints(
         modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black),
+            .fillMaxSize(),
     ) {
         val widthPx = with(localDensity) { maxWidth.toPx() }
         val heightPx = with(localDensity) { maxHeight.toPx() }
-
-        Image(
-            bitmap = screenshot.asImageBitmap(),
-            contentDescription = null,
-            modifier = Modifier.fillMaxSize(),
-            contentScale = ContentScale.FillBounds,
-        )
 
         Canvas(
             modifier = Modifier
@@ -306,8 +288,7 @@ internal fun ScreenLookupOverlay(
                         }
 
                         if (tapped == null) {
-                            selection = null
-                            showTapHint = false
+                            onClose()
                             return@detectTapGestures
                         }
 
@@ -495,14 +476,6 @@ internal fun ScreenLookupOverlay(
             }
         }
 
-        ScreenLookupControls(
-            onClose = onClose,
-            onRecapture = onRecapture,
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(top = 20.dp, end = 12.dp),
-        )
-
         val selected = selection
         if (selected != null) {
             key(selected.lookupString, lookupNonce) {
@@ -537,32 +510,3 @@ internal fun ScreenLookupOverlay(
     }
 }
 
-@Composable
-private fun ScreenLookupControls(
-    onClose: () -> Unit,
-    onRecapture: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Row(
-        modifier = modifier
-            .background(Color.Black.copy(alpha = 0.42f), CircleShape)
-            .padding(2.dp),
-        horizontalArrangement = Arrangement.spacedBy(2.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        IconButton(onClick = onRecapture) {
-            Icon(
-                imageVector = Icons.Outlined.Refresh,
-                contentDescription = stringResource(MR.strings.screen_lookup_capture_button),
-                tint = Color.White,
-            )
-        }
-        IconButton(onClick = onClose) {
-            Icon(
-                imageVector = Icons.Outlined.Close,
-                contentDescription = stringResource(MR.strings.action_close),
-                tint = Color.White,
-            )
-        }
-    }
-}

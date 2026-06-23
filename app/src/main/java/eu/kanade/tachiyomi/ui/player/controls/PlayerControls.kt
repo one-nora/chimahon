@@ -836,7 +836,6 @@ fun PlayerControls(
             viewModel = viewModel,
             screenshot = videoOcrScreenshot,
             onDismiss = dismissVideoOcr,
-            onRecapture = captureVideoOcr,
         )
     }
 
