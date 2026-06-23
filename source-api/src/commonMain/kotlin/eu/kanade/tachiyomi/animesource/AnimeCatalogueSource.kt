@@ -80,7 +80,7 @@ interface AnimeCatalogueSource : AnimeSource {
 
     fun String.stripKeywordForRelatedAnime(): List<String> {
         val regexWhitespace = Regex("\\s+")
-        val regexSpecialCharacters = Regex("([!~#$%^&*+_|/\\\\,?:;'\"<>(){}\\[\\]|\\s-|-\\s|\\s\\.|\\.\\s])")
+        val regexSpecialCharacters = Regex("([!~#$%^&*+_|/\\\\,?:;'\"<>(){}\\[\\]]|\\s-|-\\s|\\s\\.|\\.\\s])")
         val regexNumberOnly = Regex("^\\d+$")
 
         return replace(regexSpecialCharacters, " ")

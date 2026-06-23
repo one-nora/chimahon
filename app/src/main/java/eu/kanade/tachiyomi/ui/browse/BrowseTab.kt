@@ -160,7 +160,8 @@ data object BrowseTab : Tab {
             pagerState.scrollToPage(0)
         }
 
-        val currentTab = currentTabs.getOrNull(pagerState.currentPage)
+        val currentTabIndex = pagerState.currentPage.coerceAtMost(currentTabs.lastIndex)
+        val currentTab = currentTabs.getOrNull(currentTabIndex)
         val searchEnabled = currentTab?.searchEnabled ?: false
 
         val searchQuery: String? = when {
@@ -236,12 +237,12 @@ data object BrowseTab : Tab {
                 ),
             ) {
                 PrimaryTabRow(
-                    selectedTabIndex = pagerState.currentPage,
+                    selectedTabIndex = currentTabIndex,
                     modifier = Modifier.zIndex(1f),
                 ) {
                     currentTabs.forEachIndexed { index, tab ->
                         M3Tab(
-                            selected = pagerState.currentPage == index,
+                            selected = currentTabIndex == index,
                             onClick = { scope.launch { pagerState.animateScrollToPage(index) } },
                             text = { TabText(text = stringResource(tab.titleRes), badgeCount = tab.badgeNumber) },
                             unselectedContentColor = MaterialTheme.colorScheme.onSurface,

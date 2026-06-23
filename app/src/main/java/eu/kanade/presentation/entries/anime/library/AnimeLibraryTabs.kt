@@ -21,13 +21,14 @@ fun AnimeLibraryTabs(
 ) {
     val scope = rememberCoroutineScope()
 
+    val currentPageIndex = pagerState.currentPage.coerceAtMost(categories.lastIndex)
     PrimaryScrollableTabRow(
-        selectedTabIndex = pagerState.currentPage,
+        selectedTabIndex = currentPageIndex,
         edgePadding = 0.dp,
     ) {
         categories.forEachIndexed { index, category ->
             Tab(
-                selected = pagerState.currentPage == index,
+                selected = currentPageIndex == index,
                 onClick = { scope.launch { pagerState.animateScrollToPage(index) } },
                 text = {
                     Column {
