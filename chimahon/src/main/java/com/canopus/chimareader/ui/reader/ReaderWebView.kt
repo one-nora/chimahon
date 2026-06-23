@@ -702,38 +702,6 @@ private class ReaderAndroidWebView(
         val bg = readerSettings.resolvedBgHex()
         val tc = readerSettings.resolvedTextHex()
 
-        val fullBleedCSS = if (vw) """
-                    '.full-bleed-img-container {',
-                    '  overflow: visible !important;',
-                    '  max-width: none !important;',
-                    '  max-height: none !important;',
-                    '}',
-                    'img.full-bleed-img, svg.full-bleed-img {',
-                    '  height: 100vh !important;',
-                    '  max-height: none !important;',
-                    '  max-width: none !important;',
-                    '  display: block !important;',
-                    '  position: relative !important;',
-                    '  top: 50% !important;',
-                    '  margin-top: -50vh !important;',
-                    '}',
-        """ else """
-                    '.full-bleed-img-container {',
-                    '  overflow: visible !important;',
-                    '  max-width: none !important;',
-                    '  max-height: none !important;',
-                    '}',
-                    'img.full-bleed-img, svg.full-bleed-img {',
-                    '  width: 100vw !important;',
-                    '  max-width: none !important;',
-                    '  max-height: none !important;',
-                    '  display: block !important;',
-                    '  position: relative !important;',
-                    '  left: 50% !important;',
-                    '  margin-left: -50vw !important;',
-                    '}',
-        """
-
         return """
             (function() {
                 window.__readerRestoreEpoch = $epoch;
@@ -756,11 +724,11 @@ private class ReaderAndroidWebView(
                 var ih = window.innerHeight;
                 var iw = window.innerWidth;
 
-                var hPad = Math.round(iw * ${readerSettings.horizontalPadding} / 100);
-                var vPad = Math.round(ih * ${readerSettings.verticalPadding} / 100);
+                var hPad = Math.round(iw * ${readerSettings.horizontalPadding} / 200);
+                var vPad = Math.round(ih * ${readerSettings.verticalPadding} / 200);
 
-                var contentW = Math.max(1, iw - 2 * hPad);
-                var contentH = Math.max(1, ih - 2 * vPad - 2);
+                var contentW = Math.max(1, Math.round(iw * (100 - ${readerSettings.horizontalPadding}) / 100));
+                var contentH = Math.max(1, Math.round(ih * (100 - ${readerSettings.verticalPadding}) / 100));
                 document.documentElement.style.setProperty('--reader-image-max-width', contentW + 'px');
                 document.documentElement.style.setProperty('--reader-image-max-height', contentH + 'px');
 
@@ -777,8 +745,8 @@ private class ReaderAndroidWebView(
                 contImgStyle.id = 'reader-cont-img-style';
                 contImgStyle.textContent = [
                     'img.block-img, svg.block-img {',
-                    '  max-width: var(--reader-image-max-width, 95vw) !important;',
-                    '  max-height: var(--reader-image-max-height, 95vh) !important;',
+                    '  max-width: var(--reader-image-max-width, ${100 - readerSettings.horizontalPadding}vw) !important;',
+                    '  max-height: var(--reader-image-max-height, ${100 - readerSettings.verticalPadding}vh) !important;',
                     '  width: auto !important;',
                     '  height: auto !important;',
                     '  display: block !important;',
@@ -786,7 +754,7 @@ private class ReaderAndroidWebView(
                     '  object-fit: contain !important;',
                     '}',
                     'img:not(.block-img), svg:not(.block-img) {',
-                    '  max-width: min(var(--reader-image-max-width, 95vw), 100%) !important;',
+                    '  max-width: min(var(--reader-image-max-width, ${100 - readerSettings.horizontalPadding}vw), 100%) !important;',
                     '  width: auto !important;',
                     '  height: auto !important;',
                     '  min-width: 1em !important;',
@@ -800,7 +768,6 @@ private class ReaderAndroidWebView(
                     '  margin: 0 !important;',
                     '  padding: 0 !important;',
                     '}',
-                    $fullBleedCSS
                 ].join(' ');
                 document.head.appendChild(contImgStyle);
 
@@ -866,20 +833,6 @@ private class ReaderAndroidWebView(
                                 }
                                 if (isLarge) {
                                     el.classList.add('block-img');
-                                    var mediaContainer = el.parentElement;
-                                    if (mediaContainer && mediaContainer !== b && mediaContainer !== document.documentElement) {
-                                        mediaContainer.classList.add('block-img-container');
-                                        var hasContentSibling = Array.from(mediaContainer.childNodes).some(function(n) {
-                                            if (n === el) return false;
-                                            if (n.nodeType === Node.TEXT_NODE) return n.textContent.trim().length > 0;
-                                            return n.nodeType === Node.ELEMENT_NODE &&
-                                                !['BR', 'WBR'].includes(n.tagName);
-                                        });
-                                        if (!hasContentSibling) {
-                                            el.classList.add('full-bleed-img');
-                                            mediaContainer.classList.add('full-bleed-img-container');
-                                        }
-                                    }
                                 }
                             }
                             resolve();
@@ -917,38 +870,6 @@ private class ReaderAndroidWebView(
         val tc = readerSettings.resolvedTextHex()
         val bottomOverlapPx = if (vw) readerSettings.fontSize else 0
 
-        val fullBleedCSS = if (vw) """
-                    '.full-bleed-img-container {',
-                    '  overflow: visible !important;',
-                    '  max-width: none !important;',
-                    '  max-height: none !important;',
-                    '}',
-                    'img.full-bleed-img, svg.full-bleed-img {',
-                    '  height: 100vh !important;',
-                    '  max-height: none !important;',
-                    '  max-width: none !important;',
-                    '  display: block !important;',
-                    '  position: relative !important;',
-                    '  top: 50% !important;',
-                    '  margin-top: -50vh !important;',
-                    '}',
-        """ else """
-                    '.full-bleed-img-container {',
-                    '  overflow: visible !important;',
-                    '  max-width: none !important;',
-                    '  max-height: none !important;',
-                    '}',
-                    'img.full-bleed-img, svg.full-bleed-img {',
-                    '  width: 100vw !important;',
-                    '  max-width: none !important;',
-                    '  max-height: none !important;',
-                    '  display: block !important;',
-                    '  position: relative !important;',
-                    '  left: 50% !important;',
-                    '  margin-left: -50vw !important;',
-                    '}',
-        """
-
         return """
             (function() {
                 window.__readerRestoreEpoch = $epoch;
@@ -971,12 +892,12 @@ private class ReaderAndroidWebView(
                 var ih = window.innerHeight;
                 var iw = window.innerWidth;
 
-                var hPad = Math.round(iw * ${readerSettings.horizontalPadding} / 100);
-                var vPad = Math.round(ih * ${readerSettings.verticalPadding} / 100);
+                var hPad = Math.round(iw * ${readerSettings.horizontalPadding} / 200);
+                var vPad = Math.round(ih * ${readerSettings.verticalPadding} / 200);
                 var bottomOverlap = $bottomOverlapPx;
 
-                var contentW = Math.max(1, iw - 2 * hPad);
-                var contentH = Math.max(1, ih - 2 * vPad - bottomOverlap - 2);
+                var contentW = Math.max(1, Math.round(iw * (100 - ${readerSettings.horizontalPadding}) / 100));
+                var contentH = Math.max(1, Math.round(ih * (100 - ${readerSettings.verticalPadding}) / 100) - bottomOverlap - 2);
                 document.documentElement.style.setProperty('--reader-image-max-width', contentW + 'px');
                 document.documentElement.style.setProperty('--reader-image-max-height', contentH + 'px');
 
@@ -993,8 +914,8 @@ private class ReaderAndroidWebView(
                 blockImgStyle.id = 'reader-block-img-style';
                 blockImgStyle.textContent = [
                     'img.block-img, svg.block-img {',
-                    '  max-width: var(--reader-image-max-width, 95vw) !important;',
-                    '  max-height: var(--reader-image-max-height, 95vh) !important;',
+                    '  max-width: var(--reader-image-max-width, ${100 - readerSettings.horizontalPadding}vw) !important;',
+                    '  max-height: var(--reader-image-max-height, ${100 - readerSettings.verticalPadding}vh) !important;',
                     '  width: auto !important;',
                     '  height: auto !important;',
                     '  display: block !important;',
@@ -1004,7 +925,7 @@ private class ReaderAndroidWebView(
                     '  object-fit: contain !important;',
                     '}',
                     'img:not(.block-img), svg:not(.block-img) {',
-                    '  max-width: min(var(--reader-image-max-width, 95vw), 100%) !important;',
+                    '  max-width: min(var(--reader-image-max-width, ${100 - readerSettings.horizontalPadding}vw), 100%) !important;',
                     '  width: auto !important;',
                     '  height: auto !important;',
                     '  min-width: 1em !important;',
@@ -1018,7 +939,6 @@ private class ReaderAndroidWebView(
                     '  margin: 0 !important;',
                     '  padding: 0 !important;',
                     '}',
-                    $fullBleedCSS
                 ].join(' ');
                 document.head.appendChild(blockImgStyle);
 
@@ -1117,20 +1037,11 @@ private class ReaderAndroidWebView(
                                 }
                                 if (isLarge) {
                                     el.classList.add('block-img');
-                                    var mediaContainer = el.parentElement;
-                                    if (mediaContainer && mediaContainer !== b && mediaContainer !== document.documentElement) {
-                                        mediaContainer.classList.add('block-img-container');
-                                        var hasContentSibling = Array.from(mediaContainer.childNodes).some(function(n) {
-                                            if (n === el) return false;
-                                            if (n.nodeType === Node.TEXT_NODE) return n.textContent.trim().length > 0;
-                                            return n.nodeType === Node.ELEMENT_NODE &&
-                                                !['BR', 'WBR'].includes(n.tagName);
-                                        });
-                                        if (!hasContentSibling) {
-                                            el.classList.add('full-bleed-img');
-                                            mediaContainer.classList.add('full-bleed-img-container');
-                                        }
-                                    }
+                                    var wrapH = ih - 2 * vPad - bottomOverlap;
+                                    var wrapper = document.createElement('div');
+                                    wrapper.style.cssText = 'display:flex !important;align-items:center !important;justify-content:center !important;min-height:' + wrapH + 'px !important;width:100% !important;max-width:100% !important;break-inside:avoid !important;-webkit-column-break-inside:avoid !important';
+                                    el.parentNode.insertBefore(wrapper, el);
+                                    wrapper.appendChild(el);
                                 }
                             }
                             resolve();
@@ -1183,11 +1094,11 @@ private class ReaderAndroidWebView(
                 if (!b) return;
                 var iw = window.innerWidth;
                 var ih = window.innerHeight;
-                var hPad = Math.round(iw * ${settings.horizontalPadding} / 100);
-                var vPad = Math.round(ih * ${settings.verticalPadding} / 100);
+                var hPad = Math.round(iw * ${settings.horizontalPadding} / 200);
+                var vPad = Math.round(ih * ${settings.verticalPadding} / 200);
                 var bottomOverlap = ${if (settings.verticalWriting && !continuousMode) settings.fontSize else 0};
-                var contentW = Math.max(1, iw - 2 * hPad);
-                var contentH = Math.max(1, ih - 2 * vPad - bottomOverlap - 2);
+                var contentW = Math.max(1, Math.round(iw * (100 - ${settings.horizontalPadding}) / 100));
+                var contentH = Math.max(1, Math.round(ih * (100 - ${settings.verticalPadding}) / 100) - bottomOverlap - 2);
                 document.documentElement.style.setProperty('--reader-image-max-width', contentW + 'px');
                 document.documentElement.style.setProperty('--reader-image-max-height', contentH + 'px');
                 b.style.setProperty(
