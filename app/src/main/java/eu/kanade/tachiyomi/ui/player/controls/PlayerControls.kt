@@ -31,6 +31,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -252,13 +253,21 @@ fun PlayerControls(
         viewModel = viewModel,
         interactionSource = interactionSource,
     )
-    PlayerSubtitleTextLayer(
-        text = currentSubtitleText,
-        cue = activeSubtitleCue,
-        subtitleDelaySeconds = primarySubtitleDelaySeconds,
-        request = subtitleLookupRequest,
-        onLookup = openSubtitleLookup,
-    )
+    Box(Modifier.fillMaxSize()) {
+        if (subtitleLookupRequest != null) {
+            Box(Modifier.fillMaxSize().clickable {
+                subtitleLookupRequest = null
+                viewModel.unpause()
+            })
+        }
+        PlayerSubtitleTextLayer(
+            text = currentSubtitleText,
+            cue = activeSubtitleCue,
+            subtitleDelaySeconds = primarySubtitleDelaySeconds,
+            request = subtitleLookupRequest,
+            onLookup = openSubtitleLookup,
+        )
+    }
     DoubleTapToSeekOvals(doubleTapSeekAmount, seekText, interactionSource)
     CompositionLocalProvider(
         LocalRippleConfiguration provides playerRippleConfiguration,
