@@ -105,7 +105,7 @@ data object AnimeTab : Tab {
                         selectedCount = state.selection.size,
                         isRunning = false,
                         onClickClearSelection = screenModel::clearSelection,
-                        onChangeCategoryClick = { /* TODO: open category picker */ },
+                        onChangeCategoryClick = { navigator.push(eu.kanade.tachiyomi.ui.category.CategoryScreen(eu.kanade.tachiyomi.ui.category.CategoryScreen.Tab.ANIME)) },
                         onSelectAll = { screenModel.selectAll(currentPage) },
                         onReverseSelection = { screenModel.invertSelection(currentPage) },
                     )
