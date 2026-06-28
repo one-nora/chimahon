@@ -20,7 +20,6 @@ class SubtitlePreferences(
     fun subtitleBlacklist() = preferenceStore.getString("pref_subtitle_blacklist", "")
     fun jimakuApiKey() = preferenceStore.getString("pref_jimaku_api_key", "")
     fun jimakuTitle() = preferenceStore.getString("pref_jimaku_title", "")
-<<<<<<< HEAD
     fun subtitleRegexRemoveSpeakerNames() = preferenceStore.getBoolean(
         "pref_subtitle_regex_remove_speaker_names",
         false,

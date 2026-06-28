@@ -294,13 +294,12 @@ class AppModule(val app: Application) : InjektModule {
             get<NetworkHelper>()
 
             get<SourceManager>()
+            get<AnimeSourceManager>()
 
             get<Database>()
 
             get<DownloadManager>()
-
-            // get<GetCustomAnimeInfo>()
-            // get<GetCustomAnimeInfo>()
+            get<AnimeDownloadManager>()
         }
 
         addSingletonFactory { GoogleDriveService(app) }
