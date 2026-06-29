@@ -1,5 +1,6 @@
 package eu.kanade.tachiyomi.ui.youtube
 
+import android.net.Uri
 import eu.kanade.tachiyomi.animesource.model.Track
 import eu.kanade.tachiyomi.animesource.model.Video
 import kotlinx.coroutines.Dispatchers
@@ -12,8 +13,6 @@ import org.schabi.newpipe.extractor.ServiceList
 import org.schabi.newpipe.extractor.downloader.Downloader
 import org.schabi.newpipe.extractor.downloader.Request
 import org.schabi.newpipe.extractor.downloader.Response
-import org.schabi.newpipe.extractor.exceptions.ExtractionException
-import java.io.IOException
 
 class YoutubeResolver {
 
@@ -53,10 +52,13 @@ class YoutubeResolver {
 
         suspend fun resolveAllStreams(
             videoUrl: String,
-            preferredQuality: String = YouTubePreferences.QUALITY_AUTO,
+            preferredQuality: String = YouTubePreferences.DEFAULT_QUALITY,
         ): List<Video> = withContext(Dispatchers.IO) {
             ensureInitialized()
-            val extractor = ServiceList.YouTube.getStreamExtractor(videoUrl)
+            val videoId = extractVideoId(videoUrl)
+                ?: throw IllegalArgumentException("Could not find YouTube video id")
+            val linkHandler = ServiceList.YouTube.getStreamLHFactory().fromId(videoId)
+            val extractor = ServiceList.YouTube.getStreamExtractor(linkHandler)
             extractor.fetchPage()
             val subtitleTracks = listOf(
                 runCatching { extractor.subtitlesDefault }.getOrDefault(emptyList()),
@@ -107,7 +109,7 @@ class YoutubeResolver {
                 }
 
             val streamVideos = streams.map { stream ->
-                val resolution = stream.getResolution().ifBlank { stream.quality ?: "Auto" }
+                val resolution = stream.getResolution().ifBlank { stream.quality ?: "Video" }
                 val needsExternalAudio = stream.isVideoOnly()
                 Video(
                     videoUrl = stream.content,
@@ -120,32 +122,50 @@ class YoutubeResolver {
                 ).withoutExternalSubtitleLookup()
             }
 
-            val manifestVideos = listOfNotNull(
-                runCatching { extractor.hlsUrl }.getOrNull()?.takeIf { it.isNotBlank() }?.let { url ->
-                    Video(
-                        videoUrl = url,
-                        videoTitle = "Auto (HLS)",
-                        subtitleTracks = subtitleTracks,
-                        initialized = true,
-                        videoPageUrl = videoUrl,
-                    ).withoutExternalSubtitleLookup()
-                },
-                runCatching { extractor.dashMpdUrl }.getOrNull()?.takeIf { it.isNotBlank() }?.let { url ->
-                    Video(
-                        videoUrl = url,
-                        videoTitle = "Auto (DASH)",
-                        subtitleTracks = subtitleTracks,
-                        initialized = true,
-                        videoPageUrl = videoUrl,
-                    ).withoutExternalSubtitleLookup()
-                },
-            )
-
-            val videos = (manifestVideos + streamVideos).distinctBy { it.videoTitle to it.videoUrl }
+            val videos = streamVideos.distinctBy { it.videoTitle to it.videoUrl }
             val preferred = selectPreferredVideo(videos, preferredQuality)
             videos.map { video ->
                 video.copy(preferred = video == preferred)
             }
+        }
+
+        private fun extractVideoId(input: String): String? {
+            val trimmed = input.trim()
+            if (trimmed.isYouTubeVideoId()) return trimmed
+
+            val uri = runCatching { Uri.parse(trimmed) }.getOrNull() ?: return null
+            val host = uri.host.orEmpty().lowercase().removePrefix("www.")
+            val pathSegments = uri.pathSegments.orEmpty()
+
+            uri.getQueryParameter("v")?.takeIf { it.isYouTubeVideoId() }?.let { return it }
+
+            if (host == "youtu.be") {
+                pathSegments.firstOrNull()?.takeIf { it.isYouTubeVideoId() }?.let { return it }
+            }
+
+            if (host.endsWith("youtube.com") || host.endsWith("youtube-nocookie.com")) {
+                val pathId = pathSegments.firstOrNull()
+                    ?.takeIf { it in setOf("embed", "shorts", "live", "v") }
+                    ?.let { pathSegments.getOrNull(1) }
+                pathId?.takeIf { it.isYouTubeVideoId() }?.let { return it }
+
+                uri.getQueryParameter("u")
+                    ?.let { nested ->
+                        val nestedUrl = if (nested.startsWith("/")) "https://www.youtube.com$nested" else nested
+                        extractVideoId(nestedUrl)
+                    }
+                    ?.let { return it }
+            }
+
+            return Regex("""(?<![A-Za-z0-9_-])([A-Za-z0-9_-]{11})(?![A-Za-z0-9_-])""")
+                .find(trimmed)
+                ?.groupValues
+                ?.getOrNull(1)
+                ?.takeIf { it.isYouTubeVideoId() }
+        }
+
+        private fun String.isYouTubeVideoId(): Boolean {
+            return length == 11 && all { it.isLetterOrDigit() || it == '_' || it == '-' }
         }
 
         fun parseResolution(res: String): Int {
@@ -167,7 +187,6 @@ class YoutubeResolver {
             preferredQuality: String,
         ): Video? {
             if (videos.isEmpty()) return null
-            if (preferredQuality == YouTubePreferences.QUALITY_AUTO) return videos.first()
 
             val targetPixels = parseResolution(preferredQuality)
             val qualityVideos = videos.filter { parseResolution(it.videoTitle) > 0 }
