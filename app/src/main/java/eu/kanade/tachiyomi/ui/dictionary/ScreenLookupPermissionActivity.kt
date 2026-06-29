@@ -116,7 +116,7 @@ class ScreenLookupPermissionActivity : BaseActivity() {
 
     private fun MediaProjectionManager.createScreenLookupCaptureIntent(): Intent {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            createScreenCaptureIntent(MediaProjectionConfig.createConfigForDefaultDisplay())
+            createScreenCaptureIntent(MediaProjectionConfig.createConfigForUserChoice())
         } else {
             createScreenCaptureIntent()
         }
