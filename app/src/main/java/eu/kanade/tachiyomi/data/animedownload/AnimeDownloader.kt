@@ -113,6 +113,8 @@ class AnimeDownloader(
             return false
         }
 
+        notifier.dismissPaused()
+
         _queueState.value
             .filter { it.status != AnimeDownload.State.DOWNLOADED }
             .forEach { it.status = AnimeDownload.State.QUEUE }
