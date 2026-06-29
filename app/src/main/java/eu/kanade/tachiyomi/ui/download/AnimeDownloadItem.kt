@@ -3,14 +3,15 @@ package eu.kanade.tachiyomi.ui.download
 import android.view.View
 import androidx.recyclerview.widget.RecyclerView
 import eu.davidea.flexibleadapter.FlexibleAdapter
-import eu.davidea.flexibleadapter.items.AbstractFlexibleItem
+import eu.davidea.flexibleadapter.items.AbstractSectionableItem
 import eu.davidea.flexibleadapter.items.IFlexible
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.data.animedownload.model.AnimeDownload
 
 class AnimeDownloadItem(
     val download: AnimeDownload,
-) : AbstractFlexibleItem<AnimeDownloadHolder>() {
+    header: AnimeDownloadHeaderItem,
+) : AbstractSectionableItem<AnimeDownloadHolder, AnimeDownloadHeaderItem>(header) {
 
     override fun getLayoutRes(): Int = R.layout.download_item
 
@@ -30,7 +31,7 @@ class AnimeDownloadItem(
         holder.bind(download)
     }
 
-    override fun isDraggable(): Boolean = false
+    override fun isDraggable(): Boolean = true
 
     override fun equals(other: Any?): Boolean {
         if (this === other) return true

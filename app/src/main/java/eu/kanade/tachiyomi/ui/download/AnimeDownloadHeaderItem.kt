@@ -7,17 +7,11 @@ import eu.davidea.flexibleadapter.items.AbstractExpandableHeaderItem
 import eu.davidea.flexibleadapter.items.IFlexible
 import eu.kanade.tachiyomi.R
 
-interface DownloadQueueHeader {
-    val id: Long
-    val name: String
-    val size: Int
-}
-
-data class DownloadHeaderItem(
+data class AnimeDownloadHeaderItem(
     override val id: Long,
     override val name: String,
     override val size: Int,
-) : AbstractExpandableHeaderItem<DownloadHeaderHolder, DownloadItem>(),
+) : AbstractExpandableHeaderItem<DownloadHeaderHolder, AnimeDownloadItem>(),
     DownloadQueueHeader {
 
     override fun getLayoutRes(): Int {
@@ -44,7 +38,7 @@ data class DownloadHeaderItem(
         if (this === other) return true
         if (javaClass != other?.javaClass) return false
 
-        other as DownloadHeaderItem
+        other as AnimeDownloadHeaderItem
 
         if (id != other.id) return false
         if (name != other.name) return false

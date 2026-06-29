@@ -89,8 +89,13 @@ object DownloadQueueScreen : Screen() {
         val downloadList by screenModel.state.collectAsState()
         val ocrQueue by screenModel.ocrQueueState.collectAsState()
         val downloadCount = downloadList.sumOf { item ->
-            if (item is DownloadHeaderItem) item.subItems.size else 1
+            when (item) {
+                is DownloadHeaderItem -> item.subItems.size
+                is AnimeDownloadHeaderItem -> item.subItems.size
+                else -> 1
+            }
         }
+        val hasMangaDownloads = downloadList.any { it is DownloadHeaderItem }
 
         val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(rememberTopAppBarState())
         var fabExpanded by remember { mutableStateOf(true) }
@@ -199,17 +204,27 @@ object DownloadQueueScreen : Screen() {
                                 )
                             }
 
-                            AppBarActions(
-                                persistentListOf(
-                                    AppBar.Action(
-                                        title = stringResource(MR.strings.action_sort),
-                                        icon = Icons.AutoMirrored.Outlined.Sort,
-                                        onClick = { sortExpanded = true },
-                                    ),
+                            val actions = buildList<AppBar.AppBarAction> {
+                                if (hasMangaDownloads) {
+                                    add(
+                                        AppBar.Action(
+                                            title = stringResource(MR.strings.action_sort),
+                                            icon = Icons.AutoMirrored.Outlined.Sort,
+                                            onClick = { sortExpanded = true },
+                                        ),
+                                    )
+                                }
+                                add(
                                     AppBar.OverflowAction(
                                         title = stringResource(MR.strings.action_cancel_all),
                                         onClick = { screenModel.clearQueue() },
                                     ),
+                                )
+                            }
+
+                            AppBarActions(
+                                persistentListOf(
+                                    *actions.toTypedArray(),
                                 ),
                             )
                         }
@@ -480,4 +495,3 @@ private fun OcrQueueItemRow(
         }
     }
 }
-
