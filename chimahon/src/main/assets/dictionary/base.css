@@ -8,7 +8,7 @@
   --hover-bg: rgba(0, 0, 0, 0.04);
 
   --font-size-no-units: 14;
-  --font-size: 14px;
+  --font-size: calc(1px * var(--font-size-no-units));
   --line-height: 1.4;
 
   --headword-font-size: 1.6em;
@@ -72,11 +72,18 @@ body {
 .definition-item-content,
 .gloss-content,
 .gloss-plain-text,
-.structured-content,
-.structured-content * {
+.structured-content {
   font-family: inherit !important;
-  font-size: 1em !important;
   color: inherit;
+}
+
+.definition-list,
+.definition-item,
+.definition-item-content,
+.gloss-content,
+.gloss-plain-text,
+.structured-content {
+  font-size: 1em;
 }
 
 .entries {
@@ -528,7 +535,15 @@ table {
   background-image: none !important;
 }
 
-.gloss-image-sizer { display: block; width: 100%; }
+.gloss-image-sizer { display: inline-block; width: 0; vertical-align: top; font-size: 0; }
+
+.gloss-image-link[data-image-rendering=pixelated] .gloss-image {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+.gloss-image-link[data-image-rendering=crisp-edges] .gloss-image {
+  image-rendering: crisp-edges;
+}
 
 .gloss-image-background {
   position: absolute; inset: 0; background-color: var(--border); background-image: var(--image);

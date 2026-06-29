@@ -72,10 +72,6 @@
     if (!cssText || typeof cssText !== 'string') return '';
     let processed = cssText;
 
-    // Dictionary packages often ship CSS tuned for a browser-sized popup.
-    // Keep their layout/colors, but let Chimahon own text size and font family
-    // so every dictionary follows the user's configured appearance.
-    processed = processed.replace(/font-size\s*:\s*[^;\}]+;?/gi, '');
     processed = processed.replace(/font-family\s*:\s*[^;\}]+;?/gi, '');
 
     // Fix potential body tag leaks — remap to the content root class.
@@ -1467,10 +1463,6 @@
     const ratioHeight = Number.isFinite(preferredHeight) && preferredHeight > 0 ? preferredHeight : height;
     const invAspectRatio = Math.max(0.01, ratioHeight / Math.max(1, ratioWidth));
 
-    const units = typeof node.sizeUnits === 'string'
-      ? node.sizeUnits
-      : (node.data && typeof node.data.sizeUnits === 'string' ? node.data.sizeUnits : 'em');
-
     const usedWidth = Number.isFinite(preferredWidth) && preferredWidth > 0
       ? preferredWidth
       : (Number.isFinite(preferredHeight) && preferredHeight > 0 ? preferredHeight / invAspectRatio : width);
@@ -1508,7 +1500,7 @@
 
     const container = document.createElement('span');
     container.className = 'gloss-image-container';
-    container.style.width = `${trimFloat(usedWidth)}${units}`;
+    container.style.width = `${trimFloat(usedWidth)}em`;
     container.style.maxWidth = '100%';
     if (typeof node.border === 'string') container.style.border = node.border;
     if (typeof node.borderRadius === 'string') container.style.borderRadius = node.borderRadius;
@@ -1527,7 +1519,6 @@
     img.loading = 'lazy';
     img.style.maxWidth = '100%';
     img.decoding = 'async';
-    img.style.imageRendering = imageRendering;
     if (typeof node.title === 'string') img.alt = node.title;
     container.appendChild(img);
 
