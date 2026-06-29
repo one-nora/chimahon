@@ -4,6 +4,33 @@ All notable changes to Chimahon are documented here.
 
 The format follows a Keep a Changelog style and uses Semantic Versioning.
 
+## [v2.1.1]
+
+### Added
+- Dictionary data warming on OCR/subtitle surfaces for faster lookups
+- Second tap on active OCR/subtitle term dismisses lookup; playback resumes
+- Anime downloads grouped by source with headers, drag reorder, and popup menu
+- "Show Anime" button in download progress notification
+
+### Changed
+- Aligned anime library tabs and categories with manga behavior
+- Anime pause now shows correct paused notification (matching manga)
+- Screen capture permission lets user select a specific app
+- Novel landscape columns default to auto
+
+### Fixed
+- Anime pause not working in notification and download queue
+- Paused notification not dismissed on resume
+- Subtitle regex presets not compiling correctly
+- Stale episode progress reopening videos at the end
+- Badge visibility toggles in anime library not actually controlling display
+- Items landing on wrong category tab when categories empty
+- Duplicate category rows on every category dialog confirm
+- Anime library reading manga's default category preference
+- YouTube crash on pre-Android 13
+- Dictionary font-size stripping removed from JS
+- Dictionary image rendering moved to CSS data attributes
+
 ## [v2.1.0]
 
 ### Added
