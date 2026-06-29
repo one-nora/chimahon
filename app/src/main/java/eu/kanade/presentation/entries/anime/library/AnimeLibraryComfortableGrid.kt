@@ -4,6 +4,9 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.util.fastAny
 import eu.kanade.presentation.library.components.AnimeComfortableGridItem
@@ -15,6 +18,9 @@ import eu.kanade.presentation.library.components.globalSearchItem
 import eu.kanade.tachiyomi.ui.entries.anime.library.AnimeLibraryItem
 import tachiyomi.domain.entries.anime.model.AnimeCover
 import tachiyomi.domain.library.model.LibraryAnime
+import tachiyomi.domain.library.service.AnimeLibraryPreferences
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 
 @Composable
 internal fun AnimeLibraryComfortableGrid(
@@ -28,6 +34,12 @@ internal fun AnimeLibraryComfortableGrid(
     searchQuery: String?,
     onGlobalSearchClicked: () -> Unit,
 ) {
+    val badgePrefs = remember { Injekt.get<AnimeLibraryPreferences>() }
+    val showDownloadBadge by remember { badgePrefs.downloadBadge().changes() }.collectAsState(badgePrefs.downloadBadge().get())
+    val showUnseenBadge by remember { badgePrefs.unseenBadge().changes() }.collectAsState(badgePrefs.unseenBadge().get())
+    val showLocalBadge by remember { badgePrefs.localBadge().changes() }.collectAsState(badgePrefs.localBadge().get())
+    val showLanguageBadge by remember { badgePrefs.languageBadge().changes() }.collectAsState(badgePrefs.languageBadge().get())
+
     LazyLibraryGrid(
         modifier = Modifier.fillMaxSize(),
         columns = columns,
@@ -51,14 +63,17 @@ internal fun AnimeLibraryComfortableGrid(
                     lastModified = anime.coverLastModified,
                 ),
                 coverBadgeStart = {
-                    DownloadsBadge(count = libraryItem.downloadCount)
-                    UnreadBadge(count = libraryItem.unseenCount)
+                    if (showDownloadBadge) DownloadsBadge(count = libraryItem.downloadCount)
+                    if (showUnseenBadge) UnreadBadge(count = libraryItem.unseenCount)
                 },
                 coverBadgeEnd = {
-                    LanguageBadge(
-                        isLocal = libraryItem.isLocal,
-                        sourceLanguage = libraryItem.sourceLanguage,
-                    )
+                    if (showLocalBadge) AnimeSourceIconBadge(source = libraryItem.source)
+                    if (showLanguageBadge) {
+                        LanguageBadge(
+                            isLocal = libraryItem.isLocal,
+                            sourceLanguage = libraryItem.sourceLanguage,
+                        )
+                    }
                 },
                 onLongClick = { onLongClick(libraryItem.libraryAnime) },
                 onClick = { onClick(libraryItem.libraryAnime) },

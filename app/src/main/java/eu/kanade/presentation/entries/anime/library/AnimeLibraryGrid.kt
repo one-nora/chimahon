@@ -157,7 +157,7 @@ fun AnimeLibraryGrid(
 }
 
 @Composable
-private fun AnimeSourceIconBadge(source: AnimeSource?) {
+internal fun AnimeSourceIconBadge(source: AnimeSource?) {
     if (source == null) return
     val icon = source.icon
 
@@ -225,7 +225,7 @@ private fun AnimeGridItem(
         val badgePrefs = remember { Injekt.get<AnimeLibraryPreferences>() }
         val showDownloadBadge by remember { badgePrefs.downloadBadge().changes() }.collectAsState(badgePrefs.downloadBadge().get())
         val showUnseenBadge by remember { badgePrefs.unseenBadge().changes() }.collectAsState(badgePrefs.unseenBadge().get())
-        val showSourceBadge by remember { badgePrefs.sourceBadge().changes() }.collectAsState(badgePrefs.sourceBadge().get())
+        val showLocalBadge by remember { badgePrefs.localBadge().changes() }.collectAsState(badgePrefs.localBadge().get())
 
         BadgeGroup(
             modifier = Modifier
@@ -244,7 +244,7 @@ private fun AnimeGridItem(
             }
         }
 
-        if (showSourceBadge) {
+        if (showLocalBadge) {
             BadgeGroup(
                 modifier = Modifier
                     .padding(4.dp)
@@ -313,7 +313,7 @@ private fun AnimeLibraryList(
                 val isSelected = item.libraryAnime.id in selection
                 val badgePrefs = remember { Injekt.get<AnimeLibraryPreferences>() }
                 val showUnseenBadge by remember { badgePrefs.unseenBadge().changes() }.collectAsState(badgePrefs.unseenBadge().get())
-                val showSourceBadge by remember { badgePrefs.sourceBadge().changes() }.collectAsState(badgePrefs.sourceBadge().get())
+                val showLocalBadge by remember { badgePrefs.localBadge().changes() }.collectAsState(badgePrefs.localBadge().get())
                 Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -332,7 +332,7 @@ private fun AnimeLibraryList(
                     .padding(horizontal = 16.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                if (showSourceBadge) {
+                if (showLocalBadge) {
                     AnimeSourceIconBadge(source = item.source)
                     Spacer(modifier = Modifier.width(4.dp))
                 }
