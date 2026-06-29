@@ -64,6 +64,21 @@ body {
   position: relative;
 }
 
+#entries,
+.entry,
+.dictionary-group,
+.definition-list,
+.definition-item,
+.definition-item-content,
+.gloss-content,
+.gloss-plain-text,
+.structured-content,
+.structured-content * {
+  font-family: inherit !important;
+  font-size: 1em !important;
+  color: inherit;
+}
+
 .entries {
   padding: 4px 12px 4px 4px; /* top padding adjusted dynamically for fixed tab bar */
 }
@@ -189,6 +204,16 @@ body {
 .tag[data-category="popular"]    { --tag-color: var(--tag-popular-background-color); }
 .tag[data-category="dictionary"] { --tag-color: var(--tag-dictionary-background-color); }
 .tag[data-category="frequency"]  { --tag-color: var(--tag-frequency-background-color); }
+
+.frequency-top-section,
+.frequency-top-section .tag,
+.frequency-top-section .tag-label,
+.frequency-top-section .tag-body,
+.frequency-group-item,
+.frequency-group-item .tag-label,
+.frequency-group-item .tag-body {
+  color: #fff !important;
+}
 
 .tag.selected .tag-label {
   box-shadow: 0 0 0 2px var(--accent);

@@ -72,15 +72,11 @@
     if (!cssText || typeof cssText !== 'string') return '';
     let processed = cssText;
 
-    // Cap huge headlines to prevent them from dominating the popup layout.
-    processed = processed.replace(/(font-size)\s*:\s*([^;!\}]+?)\s*(!important)?\s*;/gi, (match, prop, val, imp) => {
-      const num = parseFloat(val);
-      if (isNaN(num)) return match;
-      if (num > 1.6 && (val.includes('em') || val.includes('rem'))) {
-        return `${prop}: 1.4em ${imp || ''};`;
-      }
-      return match;
-    });
+    // Dictionary packages often ship CSS tuned for a browser-sized popup.
+    // Keep their layout/colors, but let Chimahon own text size and font family
+    // so every dictionary follows the user's configured appearance.
+    processed = processed.replace(/font-size\s*:\s*[^;\}]+;?/gi, '');
+    processed = processed.replace(/font-family\s*:\s*[^;\}]+;?/gi, '');
 
     // Fix potential body tag leaks — remap to the content root class.
     processed = processed.replace(/^\s*body\s*\{/gm, '.dict-content-root {');

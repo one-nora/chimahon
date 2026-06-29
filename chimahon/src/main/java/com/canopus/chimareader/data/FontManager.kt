@@ -15,7 +15,7 @@ object FontManager {
 
     fun getFontUri(context: Context, fontName: String): String? {
         val file = getFontFile(context, fontName) ?: return null
-        return "file://${file.absolutePath}"
+        return Uri.fromFile(file).toString()
     }
 
     fun getFontsDir(context: Context): File {

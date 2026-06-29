@@ -38,7 +38,7 @@ internal fun getDictionaryBootstrapHtml(
             src: url('$fontUrl');
           }
           :root, body, #entries {
-            font-family: 'HoshiCustomFont' !important;
+            font-family: 'HoshiCustomFont', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
           }
         """.trimIndent()
     } else if (fontFamily.isNotBlank()) {
