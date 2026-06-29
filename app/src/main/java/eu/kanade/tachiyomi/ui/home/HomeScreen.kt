@@ -24,11 +24,8 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -118,15 +115,10 @@ object HomeScreen : Screen() {
         }
         // SY <--
 
-        var savedTabKey by rememberSaveable { mutableStateOf(startTab.key) }
-
         TabNavigator(
-            tab = ALL_TABS_MAP[savedTabKey] ?: startTab,
+            tab = startTab,
             key = TAB_NAVIGATOR_KEY,
         ) { tabNavigator ->
-            LaunchedEffect(tabNavigator.current.key) {
-                savedTabKey = tabNavigator.current.key
-            }
             // Provide usable navigator to content screen
             CompositionLocalProvider(LocalNavigator provides navigator) {
                 Scaffold(
