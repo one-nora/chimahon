@@ -163,8 +163,187 @@ class KoreanMorphemeChainAnalyzerTest {
         assertAlternation(parses, "듣다", "ㄷ irregular")
     }
 
+    @Test
+    fun `dictionary lexicon mode accepts adjective predicates`() {
+        val lexicon = KoreanMorphemeLexicon { lemma ->
+            when (lemma) {
+                "고맙다" -> listOf(
+                    KoreanMorphemeLexiconEntry(
+                        lemma = lemma,
+                        partsOfSpeech = setOf("adj"),
+                        inflectionClasses = setOf("bieup_irregular"),
+                    ),
+                )
+                else -> emptyList()
+            }
+        }
+
+        val parse = KoreanMorphemeChainAnalyzer.analyze("고마워", lexicon = lexicon).parseForExact("고맙다")
+
+        assertEquals(listOf("고맙다", "-아/어"), parse.displayParts())
+    }
+
+    @Test
+    fun `dictionary lexicon mode filters predicate parses with noun only entries`() {
+        val lexicon = KoreanMorphemeLexicon { lemma ->
+            when (lemma) {
+                "돕다" -> listOf(
+                    KoreanMorphemeLexiconEntry(
+                        lemma = lemma,
+                        partsOfSpeech = setOf("n"),
+                        inflectionClasses = setOf("bieup_irregular"),
+                    ),
+                )
+                else -> emptyList()
+            }
+        }
+
+        val parses = KoreanMorphemeChainAnalyzer.analyze("도와서", lexicon = lexicon)
+
+        assertTrue(parses.none { "돕다" in it.lemmaCandidates })
+    }
+
+    @Test
+    fun `recovers lexicalized compound and auxiliary chain from contracted past`() {
+        val parses = KoreanMorphemeChainAnalyzer.analyze("찾아왔다", lexicon = lexiconOf("찾아오다", "찾다", "오다"))
+
+        assertEquals(
+            listOf("찾아오다", "-았/었", "-다"),
+            parses.parseForExact("찾아오다").displayParts(),
+        )
+        assertEquals(
+            listOf("찾", "-아/어", "오다", "-았/었", "-다"),
+            parses.parseForAll("찾다", "오다").displayParts(),
+        )
+    }
+
+    @Test
+    fun `recovers lexicalized compound and auxiliary chain before finite ending`() {
+        val parses = KoreanMorphemeChainAnalyzer.analyze("찾아온다", lexicon = lexiconOf("찾아오다", "찾다", "오다"))
+
+        assertEquals(
+            listOf("찾아오", "-ㄴ다"),
+            parses.parseForExact("찾아오다").displayParts(),
+        )
+        assertEquals(
+            listOf("찾", "-아/어", "오다", "-ㄴ다"),
+            parses.parseForAll("찾다", "오다").displayParts(),
+        )
+    }
+
+    @Test
+    fun `recovers lexicalized compound and auxiliary chain from contracted informal ending`() {
+        val parses = KoreanMorphemeChainAnalyzer.analyze("찾아봐", lexicon = lexiconOf("찾아보다", "찾다", "보다"))
+
+        assertEquals(
+            listOf("찾아보다", "-아/어"),
+            parses.parseForExact("찾아보다").displayParts(),
+        )
+        assertEquals(
+            listOf("찾", "-아/어", "보다", "-아/어"),
+            parses.parseForAll("찾다", "보다").displayParts(),
+        )
+    }
+
+    @Test
+    fun `recovers contracted regular vowel past lemma`() {
+        val parse = KoreanMorphemeChainAnalyzer.analyze("갖췄다", lexicon = lexiconOf("갖추다")).parseForExact("갖추다")
+
+        assertEquals(listOf("갖추다", "-았/었", "-다"), parse.displayParts())
+        assertEquals(listOf("vowel contraction"), parse.alternations.map { it.name })
+    }
+
+    @Test
+    fun `recovers go auxiliary chains`() {
+        val progressive = KoreanMorphemeChainAnalyzer.analyze("읽고있다", lexicon = lexiconOf("읽다", "있다"))
+            .parseForAll("읽다", "있다")
+        val desiderative = KoreanMorphemeChainAnalyzer.analyze("먹고싶다", lexicon = lexiconOf("먹다", "싶다"))
+            .parseForAll("먹다", "싶다")
+
+        assertEquals(listOf("읽", "-고", "있다", "-다"), progressive.displayParts())
+        assertEquals(listOf("먹", "-고", "싶다", "-다"), desiderative.displayParts())
+    }
+
+    @Test
+    fun `recovers ji auxiliary chain`() {
+        val parse = KoreanMorphemeChainAnalyzer.analyze("읽지않다", lexicon = lexiconOf("읽다", "않다"))
+            .parseForAll("읽다", "않다")
+
+        assertEquals(listOf("읽", "-지", "않다", "-다"), parse.displayParts())
+    }
+
+    @Test
+    fun `recovers common contracted vowel past lemmas`() {
+        val cases = mapOf(
+            "갔다" to "가다",
+            "섰다" to "서다",
+            "냈다" to "내다",
+            "됐다" to "되다",
+            "켰다" to "켜다",
+            "했다" to "하다",
+        )
+
+        for ((surface, lemma) in cases) {
+            val parse = KoreanMorphemeChainAnalyzer.analyze(surface, lexicon = lexiconOf(lemma)).parseForExact(lemma)
+            assertEquals(listOf(lemma, "-았/었", "-다"), parse.displayParts(), surface)
+        }
+    }
+
+    @Test
+    fun `recovers common contracted informal lemmas`() {
+        val cases = mapOf(
+            "가" to "가다",
+            "서" to "서다",
+            "내" to "내다",
+            "돼" to "되다",
+            "켜" to "켜다",
+            "해" to "하다",
+        )
+
+        for ((surface, lemma) in cases) {
+            val parse = KoreanMorphemeChainAnalyzer.analyze(surface, lexicon = lexiconOf(lemma)).parseForExact(lemma)
+            assertEquals(listOf(lemma, "-아/어"), parse.displayParts(), surface)
+        }
+    }
+
+    @Test
+    fun `recovers irregular contracted informal and past lemmas`() {
+        val cases = mapOf(
+            "고마워" to "고맙다",
+            "고마웠다" to "고맙다",
+            "불러" to "부르다",
+            "불렀다" to "부르다",
+            "들어" to "듣다",
+            "나아" to "낫다",
+        )
+
+        for ((surface, lemma) in cases) {
+            val parse = KoreanMorphemeChainAnalyzer.analyze(surface, lexicon = lexiconOf(lemma)).parseForExact(lemma)
+            assertTrue(parse.displayParts().first() == lemma, surface)
+            assertTrue(parse.alternations.isNotEmpty(), surface)
+        }
+    }
+
+    private fun lexiconOf(vararg lemmas: String): KoreanMorphemeLexicon {
+        val entries = lemmas.associateWith { lemma ->
+            listOf(KoreanMorphemeLexiconEntry(lemma = lemma, partsOfSpeech = setOf("VV"), score = 10))
+        }
+        return KoreanMorphemeLexicon { lemma -> entries[lemma].orEmpty() }
+    }
+
     private fun List<KoreanMorphemeParse>.parseFor(lemma: String): KoreanMorphemeParse {
         return first { lemma in it.lemmaCandidates }
+    }
+
+    private fun List<KoreanMorphemeParse>.parseForExact(lemma: String): KoreanMorphemeParse {
+        val seen = joinToString { it.lemmaCandidates.joinToString("+") }
+        return firstOrNull { it.lemmaCandidates == listOf(lemma) }
+            ?: error("Missing exact lemma $lemma. Saw: $seen")
+    }
+
+    private fun List<KoreanMorphemeParse>.parseForAll(vararg lemmas: String): KoreanMorphemeParse {
+        val expected = lemmas.toSet()
+        return first { it.lemmaCandidates.toSet() == expected }
     }
 
     private fun assertAlternation(

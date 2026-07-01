@@ -14,6 +14,9 @@ class KoreanMorphemeChainAnalyzerComparisonTest {
             "들어서",
             "도와서",
             "학생이라고",
+            "찾아왔다",
+            "찾아봐",
+            "갖췄다",
         )
 
         for (case in cases) {
