@@ -3,6 +3,8 @@ window.hoshiReader = {
     continuousMode: false,
     pageHeight: 0,
     pageWidth: 0,
+    nativeSelectionActive: false,
+    nativeSelectionScrollPosition: null,
     // Character counting regex: keeps alphanumeric and CJK scripts (Japanese, Chinese, Korean).
     // Added \p{Script=Hangul} to support Korean and clarified the CJK ideograph property.
     ttuRegexNegated: /[^0-9A-Za-z○◯々-〇〻ぁ-ゖゝ-ゞァ-ヺー０-９Ａ-Ｚａ-ｚｦ-ﾝ\p{Radical}\p{Unified_Ideograph}\p{Script=Hangul}]+/gimu,
@@ -37,19 +39,94 @@ window.hoshiReader = {
 
     lockRootViewport: function() {
         var root = document.documentElement;
-        if (root.scrollTop !== 0) root.scrollTop = 0;
-        if (root.scrollLeft !== 0) root.scrollLeft = 0;
-        if (window.scrollX !== 0 || window.scrollY !== 0) window.scrollTo(0, 0);
+        var didScroll = false;
+        if (root.scrollTop !== 0) {
+            root.scrollTop = 0;
+            didScroll = true;
+        }
+        if (root.scrollLeft !== 0) {
+            root.scrollLeft = 0;
+            didScroll = true;
+        }
+        if (window.scrollX !== 0 || window.scrollY !== 0) {
+            window.scrollTo(0, 0);
+            didScroll = true;
+        }
+        return didScroll;
+    },
+
+    assignPagePosition: function(context, position) {
+        if (context.vertical) {
+            context.scrollEl.scrollTop = position;
+        } else {
+            context.scrollEl.scrollLeft = position;
+        }
+        this.lockRootViewport();
     },
 
     setPagePosition: function(context, position) {
         var clamped = Math.min(Math.max(0, position), context.maxScroll);
-        if (context.vertical) {
-            context.scrollEl.scrollTop = clamped;
-        } else {
-            context.scrollEl.scrollLeft = clamped;
+        window.lastPageScroll = clamped;
+        this.assignPagePosition(context, clamped);
+        return clamped;
+    },
+
+    setNativeSelectionActive: function(active) {
+        var context = this.getScrollContext();
+        if (active) {
+            this.nativeSelectionActive = true;
+            this.nativeSelectionScrollPosition = this.getPagePosition(context);
+            window.lastPageScroll = this.nativeSelectionScrollPosition;
+            return;
         }
+        if (this.nativeSelectionActive && this.nativeSelectionScrollPosition !== null && this.nativeSelectionScrollPosition !== undefined) {
+            var lockedScroll = Math.min(Math.max(0, this.nativeSelectionScrollPosition), context.maxScroll);
+            this.assignPagePosition(context, lockedScroll);
+            window.lastPageScroll = lockedScroll;
+        }
+        this.nativeSelectionActive = false;
+        this.nativeSelectionScrollPosition = null;
+    },
+
+    handlePagedBodyScroll: function() {
         this.lockRootViewport();
+        var context = this.getScrollContext();
+        if (context.pageSize <= 0) return;
+        var currentScroll = this.getPagePosition(context);
+        if (this.nativeSelectionActive) {
+            var lockedScroll = this.nativeSelectionScrollPosition;
+            if (lockedScroll === null || lockedScroll === undefined) {
+                lockedScroll = window.lastPageScroll || 0;
+            }
+            lockedScroll = Math.min(Math.max(0, lockedScroll), context.maxScroll);
+            if (Math.abs(currentScroll - lockedScroll) > 0.5) {
+                this.assignPagePosition(context, lockedScroll);
+            }
+            window.lastPageScroll = lockedScroll;
+            return;
+        }
+        var snappedScroll = Math.round(currentScroll / context.pageSize) * context.pageSize;
+        snappedScroll = Math.min(Math.max(0, snappedScroll), context.maxScroll);
+        if (Math.abs(currentScroll - snappedScroll) > 1) {
+            this.assignPagePosition(context, window.lastPageScroll || 0);
+        } else {
+            window.lastPageScroll = snappedScroll;
+        }
+    },
+
+    registerSnapScroll: function(initialScroll) {
+        if (this.continuousMode || window.snapScrollRegistered) return;
+        window.snapScrollRegistered = true;
+        window.lastPageScroll = initialScroll;
+        this.lockRootViewport();
+        window.addEventListener('scroll', () => {
+            if (this.lockRootViewport()) {
+                requestAnimationFrame(() => this.lockRootViewport());
+            }
+        }, { passive: true });
+        document.body.addEventListener('scroll', () => {
+            this.handlePagedBodyScroll();
+        }, { passive: true });
     },
 
     paginate: function(direction) {
@@ -112,12 +189,14 @@ window.hoshiReader = {
         if (!this.continuousMode) {
             var context = this.getScrollContext();
             if (context.pageSize <= 0) {
+                this.registerSnapScroll(0);
                 this.notifyRestoreComplete();
                 return;
             }
 
             if (p >= 0.99) {
-                this.setPagePosition(context, context.maxScroll);
+                var lastPage = this.setPagePosition(context, context.maxScroll);
+                this.registerSnapScroll(lastPage);
                 this.notifyRestoreComplete();
                 return;
             }
@@ -130,7 +209,8 @@ window.hoshiReader = {
             }
 
             if (totalChars <= 0) {
-                this.setPagePosition(context, Math.round(context.maxScroll * p));
+                var fallbackPage = this.setPagePosition(context, Math.round(context.maxScroll * p));
+                this.registerSnapScroll(fallbackPage);
                 this.notifyRestoreComplete();
                 return;
             }
@@ -167,9 +247,11 @@ window.hoshiReader = {
                 var currentScroll = this.getPagePosition(context);
                 var anchor = (context.vertical ? rect.top : rect.left) + currentScroll;
                 var aligned = Math.floor(Math.max(0, anchor) / context.pageSize) * context.pageSize;
-                this.setPagePosition(context, aligned);
+                var restoredPage = this.setPagePosition(context, aligned);
+                this.registerSnapScroll(restoredPage);
             } else {
-                this.setPagePosition(context, Math.round(context.maxScroll * p));
+                var approximatePage = this.setPagePosition(context, Math.round(context.maxScroll * p));
+                this.registerSnapScroll(approximatePage);
             }
 
             this.notifyRestoreComplete();
