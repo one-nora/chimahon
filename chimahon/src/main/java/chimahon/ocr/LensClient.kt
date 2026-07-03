@@ -3,7 +3,6 @@
 package chimahon.ocr
 
 import android.graphics.Bitmap
-import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -109,7 +108,12 @@ class LensClient(
     ): OcrDebugResult = withContext(Dispatchers.IO) {
         retryOcr {
             val rawChunks = getRawOcrDataInternal(bytes, language)
-            val config = MergeConfig(language = language, addSpaceOnMerge = addSpaceOnMerge)
+            val config = MergeConfig(
+                language = language,
+                addSpaceOnMerge = addSpaceOnMerge,
+                imageWidth = rawChunks.firstOrNull()?.fullWidth?.toDouble(),
+                imageHeight = rawChunks.firstOrNull()?.fullHeight?.toDouble(),
+            )
             val mergedResults = when (merger) {
                 MergerType.LEGACY -> rawChunks.flatMap { chunk ->
                     LensMerger.autoMerge(chunk.lines, chunk.width, chunk.height, config).map { result ->
@@ -144,7 +148,12 @@ class LensClient(
     ): OcrDebugResult = withContext(Dispatchers.IO) {
         retryOcr {
             val rawChunks = getRawOcrDataInternal(bitmap, language)
-            val config = MergeConfig(language = language, addSpaceOnMerge = addSpaceOnMerge)
+            val config = MergeConfig(
+                language = language,
+                addSpaceOnMerge = addSpaceOnMerge,
+                imageWidth = rawChunks.firstOrNull()?.fullWidth?.toDouble(),
+                imageHeight = rawChunks.firstOrNull()?.fullHeight?.toDouble(),
+            )
             val mergedResults = when (merger) {
                 MergerType.LEGACY -> rawChunks.flatMap { chunk ->
                     LensMerger.autoMerge(chunk.lines, chunk.width, chunk.height, config).map { result ->

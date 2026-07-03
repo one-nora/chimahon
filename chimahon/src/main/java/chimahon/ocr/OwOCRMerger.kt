@@ -23,25 +23,34 @@ object OwOCRMerger {
             return emptyList()
         }
 
+        val useJapaneseLogic = config.language.isJapanese
         var lines = createLineDictionaries(engineLines, config)
         if (lines.isEmpty()) {
             return emptyList()
         }
 
-        if (config.furiganaFilter && config.language.isJapanese) {
+        if (config.furiganaFilter && useJapaneseLogic) {
             lines = globalFuriganaFilter(lines, config)
         }
 
-        val paragraphs = createParagraphsFromLines(lines, config)
+        val paragraphs = if (useJapaneseLogic) {
+            createParagraphsFromLines(lines, config)
+        } else {
+            createParagraphsFromLinesLegacy(lines, config)
+        }
         val merged = if (config.mergeCloseParagraphs) {
-            mergeCloseParagraphs(paragraphs, config)
+            if (useJapaneseLogic) {
+                mergeCloseParagraphs(paragraphs, config)
+            } else {
+                mergeCloseParagraphsLegacy(paragraphs, config)
+            }
         } else {
             paragraphs.map {
                 it.paragraphObj
             }
         }
-        val rows = groupParagraphsIntoRows(merged)
-        val reordered = reorderParagraphsInRows(rows)
+        val rows = groupParagraphsIntoRows(merged, useJapaneseLogic)
+        val reordered = reorderParagraphsInRows(rows, useJapaneseLogic)
         val flattened = flattenRowsToParagraphs(reordered)
         return flattened
     }
@@ -65,10 +74,10 @@ object OwOCRMerger {
 
     private fun createLineDictionaries(lines: List<EngineLine>, config: MergeConfig): List<LineDict> {
         return lines.mapNotNull { line ->
-            // if (line.text.isBlank()) return@mapNotNull null
+            if (line.text.isBlank()) return@mapNotNull null
             // We shouldn't drop lines just because they lack JP text, they might be punctuation!
             // if (config.language == OcrLanguage.JAPANESE && !line.hasJpText) return@mapNotNull null
-            // if (config.language == OcrLanguage.CHINESE && !line.hasKanji) return@mapNotNull null
+            if (config.language == OcrLanguage.CHINESE && !line.hasKanji) return@mapNotNull null
 
             val isVertical = line.writingDirection == WritingDirection.TTB
             val isRtl = line.writingDirection == WritingDirection.RTL ||
@@ -140,6 +149,61 @@ object OwOCRMerger {
         return allParagraphs
     }
 
+    private fun createParagraphsFromLinesLegacy(lines: List<LineDict>, config: MergeConfig): List<ParagraphWithMeta> {
+        val grouped = mutableSetOf<Int>()
+        val allParagraphs = mutableListOf<ParagraphWithMeta>()
+
+        fun groupLines(isVertical: Boolean, isRtl: Boolean) {
+            val indices = lines.indices.filter { i ->
+                lines[i].isVertical == isVertical &&
+                    lines[i].isRtl == isRtl &&
+                    i !in grouped
+            }
+            if (indices.size < 2) return
+
+            val components = findConnectedComponents(
+                items = indices.map { lines[it] },
+                shouldConnect = { a, b -> shouldGroupInSameParagraphLegacy(a, b, isVertical, config) },
+                getStartCoord = if (isVertical) {
+                    { it -> it.bbox.top }
+                } else if (isRtl) {
+                    { it -> it.bbox.right }
+                } else {
+                    { it -> it.bbox.left }
+                },
+                getEndCoord = if (isVertical) {
+                    { it -> it.bbox.bottom }
+                } else if (isRtl) {
+                    { it -> it.bbox.left }
+                } else {
+                    { it -> it.bbox.right }
+                },
+                sweepPadding = 0.0,
+            )
+
+            for (component in components) {
+                if (component.size > 1) {
+                    val originalIndices = component.map { indices[it] }
+                    val paragraphLines = originalIndices.map { lines[it] }
+                    val para = createParagraphFromLinesLegacy(paragraphLines, isVertical, isRtl, config)
+                    allParagraphs.add(para)
+                    grouped.addAll(originalIndices)
+                }
+            }
+        }
+
+        groupLines(isVertical = true, isRtl = false)
+        groupLines(isVertical = false, isRtl = true)
+        groupLines(isVertical = false, isRtl = false)
+
+        val ungrouped = lines.indices.filter { it !in grouped }.map { lines[it] }
+        for (line in ungrouped) {
+            allParagraphs.add(createParagraphFromLinesLegacy(listOf(line), line.isVertical, line.isRtl, config))
+        }
+
+        return allParagraphs
+    }
+
     // ================================================================
     // STAGE 2a: createParagraphFromLines
     // ================================================================
@@ -201,13 +265,73 @@ object OwOCRMerger {
             isMerged = filtered.size > 1,
             forcedOrientation = forcedOrientation,
             constituentBoxes = filtered.map { it.bbox.toBoundingBox() },
-            constituentResults = filtered.map {
-                OcrResult(
-                    text = it.text,
-                    tightBoundingBox = it.bbox.toBoundingBox(),
-                    characterSize = it.characterSize
-                )
-            },
+        )
+
+        val largestLineCharSize = if (isVertical) {
+            filtered.maxByOrNull { it.bbox.width }?.characterSize ?: 0.0
+        } else {
+            filtered.maxByOrNull { it.bbox.height }?.characterSize ?: 0.0
+        }
+
+        return ParagraphWithMeta(
+            paragraphObj = paraObj,
+            writingDirection = writingDirection,
+            characterSize = largestLineCharSize,
+            isVertical = isVertical,
+            sourceLines = filtered,
+        )
+    }
+
+    private fun createParagraphFromLinesLegacy(
+        lines: List<LineDict>,
+        isVertical: Boolean,
+        isRtl: Boolean,
+        config: MergeConfig,
+    ): ParagraphWithMeta {
+        val sorted = if (isVertical) {
+            lines.sortedByDescending { it.bbox.right }
+        } else {
+            lines.sortedBy { it.bbox.top }
+        }
+
+        val mergedFragments = mergeOverlappingLines(sorted, isVertical)
+        val filtered = if (lines.none { it.paragraphId != null } && config.furiganaFilter) {
+            furiganaFilter(mergedFragments, isVertical)
+        } else {
+            mergedFragments
+        }
+
+        if (filtered.isEmpty()) {
+            return createParagraphFromLinesLegacy(sorted.take(1), isVertical, isRtl, config)
+        }
+
+        val left = filtered.minOf { it.bbox.left }
+        val right = filtered.maxOf { it.bbox.right }
+        val top = filtered.minOf { it.bbox.top }
+        val bottom = filtered.maxOf { it.bbox.bottom }
+
+        val textContent = buildString {
+            for ((idx, line) in filtered.withIndex()) {
+                if (idx > 0) {
+                    append('\n')
+                }
+                append(OcrPreprocessor.clean(line.text))
+            }
+        }
+
+        val forcedOrientation = if (isVertical) "vertical" else "horizontal"
+        val writingDirection = when {
+            isVertical -> WritingDirection.TTB
+            isRtl -> WritingDirection.RTL
+            else -> WritingDirection.LTR
+        }
+
+        val paraObj = OcrResult(
+            text = textContent,
+            tightBoundingBox = BoundingBox(x = left, y = top, width = right - left, height = bottom - top),
+            isMerged = filtered.size > 1,
+            forcedOrientation = forcedOrientation,
+            constituentBoxes = filtered.map { it.bbox.toBoundingBox() },
         )
 
         val largestLineCharSize = if (isVertical) {
@@ -429,12 +553,108 @@ object OwOCRMerger {
         }
     }
 
+    private fun shouldGroupInSameParagraphLegacy(
+        line1: LineDict,
+        line2: LineDict,
+        isVertical: Boolean,
+        config: MergeConfig,
+    ): Boolean {
+        val characterSize = maxOf(line1.characterSize, line2.characterSize)
+
+        if (isVertical) {
+            val hDist = horizontalDistance(line1.bbox, line2.bbox)
+            val lineWidth = maxOf(line1.bbox.width, line2.bbox.width)
+            if (hDist >= lineWidth) return false
+            if (abs(line1.bbox.top - line2.bbox.top) < characterSize) return true
+        } else {
+            val vDist = verticalDistance(line1.bbox, line2.bbox)
+            val lineHeight = maxOf(line1.bbox.height, line2.bbox.height)
+            if (vDist >= lineHeight * 2) return false
+
+            val coord1 = if (line1.isRtl) line2.bbox.right else line1.bbox.left
+            val coord2 = if (line1.isRtl) line1.bbox.right else line2.bbox.left
+            if (coord1 - coord2 < 2 * characterSize) return true
+
+            if (config.supportCenterAlignedText && horizontalOverlap(line1.bbox, line2.bbox) > 0.9) return true
+        }
+
+        val filtered = furiganaFilter(listOf(line1, line2), isVertical)
+        if (filtered.size == 1) {
+            line1.isFurigana = true
+            return true
+        }
+
+        return false
+    }
+
     // ================================================================
     // STAGE 2d: globalFuriganaFilter (Hybrid Filter)
     // ================================================================
 
     private val KATAKANA_REGEX = Regex("[\u30A0-\u30FF]")
     private val KANJI_REGEX = Regex("[\u4E00-\u9FFF\u3400-\u4DBF]")
+
+    private fun furiganaFilter(lines: List<LineDict>, isVertical: Boolean): List<LineDict> {
+        val filtered = mutableListOf<LineDict>()
+        for (i in lines.indices) {
+            if (lines[i].isFurigana) continue
+            if (i >= lines.size - 1) {
+                filtered.add(lines[i])
+                continue
+            }
+            val next = lines[i + 1]
+
+            if (!(lines[i].hasJpText && next.hasJpText)) {
+                filtered.add(lines[i])
+                continue
+            }
+            if (lines[i].hasKanji) {
+                filtered.add(lines[i])
+                continue
+            }
+            if (!next.hasKanji) {
+                filtered.add(lines[i])
+                continue
+            }
+            if (next.isFurigana) {
+                filtered.add(lines[i])
+                continue
+            }
+
+            val curBbox = lines[i].bbox
+            val nextBbox = next.bbox
+
+            val passedPosition = if (isVertical) {
+                val minHDist = abs(nextBbox.width - curBbox.width) / 2
+                val maxHDist = nextBbox.width + curBbox.width / 2
+                val hDist = curBbox.centerX - nextBbox.centerX
+                val vOverlap = verticalOverlap(curBbox, nextBbox)
+                hDist > minHDist && hDist < maxHDist && vOverlap > 0.4
+            } else {
+                val minVDist = abs(nextBbox.height - curBbox.height) / 2
+                val maxVDist = nextBbox.height + curBbox.height / 2
+                val vDist = nextBbox.centerY - curBbox.centerY
+                val hOverlap = horizontalOverlap(curBbox, nextBbox)
+                vDist > minVDist && vDist < maxVDist && hOverlap > 0.4
+            }
+
+            if (!passedPosition) {
+                filtered.add(lines[i])
+                continue
+            }
+
+            val passedSize = if (isVertical) {
+                lines[i].characterSize < next.characterSize * 0.85
+            } else {
+                curBbox.height < nextBbox.height * 0.85
+            }
+
+            if (!passedSize) {
+                filtered.add(lines[i])
+            }
+        }
+        return filtered
+    }
 
     private fun globalFuriganaFilter(lines: List<LineDict>, config: MergeConfig): List<LineDict> {
         val n = lines.size
@@ -556,7 +776,7 @@ object OwOCRMerger {
                 items = indices.map { paragraphs[it] },
                 shouldConnect = { a, b ->
                     val charSize = maxOf(a.characterSize, b.characterSize)
-                    var rotDiff = abs((a.paragraphObj.tightBoundingBox.rotation ?: 0.0) - (b.paragraphObj.tightBoundingBox.rotation ?: 0.0))
+                    var rotDiff = Math.toRadians(abs((a.paragraphObj.tightBoundingBox.rotation ?: 0.0) - (b.paragraphObj.tightBoundingBox.rotation ?: 0.0)))
                     while (rotDiff > Math.PI) rotDiff -= Math.PI
                     if (rotDiff > Math.PI / 2) rotDiff = Math.PI - rotDiff
                     val distToMultipleOfPiHalf = minOf(rotDiff, abs(Math.PI / 2 - rotDiff))
@@ -627,6 +847,82 @@ object OwOCRMerger {
         return merged
     }
 
+    private fun mergeCloseParagraphsLegacy(paragraphs: List<ParagraphWithMeta>, config: MergeConfig): List<OcrResult> {
+        if (paragraphs.size < 2) return paragraphs.map { it.paragraphObj }
+
+        val merged = mutableListOf<OcrResult>()
+
+        fun mergeOrientation(isVertical: Boolean) {
+            val indices = paragraphs.indices.filter {
+                (paragraphs[it].writingDirection == WritingDirection.TTB) == isVertical
+            }
+            if (indices.size <= 1) {
+                for (i in indices) merged.add(paragraphs[i].paragraphObj)
+                return
+            }
+
+            val components = findConnectedComponents(
+                items = indices.map { paragraphs[it] },
+                shouldConnect = { a, b ->
+                    val charSize = maxOf(a.characterSize, b.characterSize)
+                    if (isVertical) {
+                        verticalDistance(a.paragraphObj.tightBoundingBox, b.paragraphObj.tightBoundingBox) <=
+                            2 * charSize &&
+                            horizontalOverlap(
+                                a.paragraphObj.tightBoundingBox,
+                                b.paragraphObj.tightBoundingBox,
+                            ) >
+                            0.9
+                    } else {
+                        a.writingDirection == b.writingDirection &&
+                            horizontalDistance(
+                                a.paragraphObj.tightBoundingBox,
+                                b.paragraphObj.tightBoundingBox,
+                            ) <=
+                            3 * charSize &&
+                            verticalOverlap(a.paragraphObj.tightBoundingBox, b.paragraphObj.tightBoundingBox) >
+                            0.9
+                    }
+                },
+                getStartCoord = if (isVertical) {
+                    { it -> it.paragraphObj.tightBoundingBox.x }
+                } else {
+                    { it -> it.paragraphObj.tightBoundingBox.y }
+                },
+                getEndCoord = if (isVertical) {
+                    { it ->
+                        it.paragraphObj.tightBoundingBox.x +
+                            it.paragraphObj.tightBoundingBox.width
+                    }
+                } else {
+                    { it -> it.paragraphObj.tightBoundingBox.y + it.paragraphObj.tightBoundingBox.height }
+                },
+                sweepPadding = 0.0,
+            )
+
+            for (component in components) {
+                val origIndices = component.map { indices[it] }
+                if (component.size == 1) {
+                    merged.add(paragraphs[origIndices[0]].paragraphObj)
+                } else {
+                    val componentParas = origIndices.map { paragraphs[it] }
+                    val allLineDicts = componentParas.flatMap { it.sourceLines }
+                    val result = createParagraphFromLinesLegacy(
+                        allLineDicts,
+                        isVertical,
+                        componentParas.first().writingDirection == WritingDirection.RTL,
+                        MergeConfig(furiganaFilter = false, language = config.language),
+                    )
+                    merged.add(result.paragraphObj)
+                }
+            }
+        }
+
+        mergeOrientation(isVertical = true)
+        mergeOrientation(isVertical = false)
+        return merged
+    }
+
     private fun BoundingBox.toNormalized(): NormalizedBBox =
         NormalizedBBox(x, y, x + width, y + height)
 
@@ -643,7 +939,7 @@ object OwOCRMerger {
         val writingDirection: WritingDirection,
     )
 
-    private fun groupParagraphsIntoRows(paragraphs: List<OcrResult>): List<Row> {
+    private fun groupParagraphsIntoRows(paragraphs: List<OcrResult>, useJapaneseLogic: Boolean): List<Row> {
         if (paragraphs.isEmpty()) return emptyList()
         if (paragraphs.size == 1) {
             return listOf(
@@ -678,6 +974,7 @@ object OwOCRMerger {
             },
             getStartCoord = { it.tightBoundingBox.y },
             getEndCoord = { it.tightBoundingBox.y + it.tightBoundingBox.height },
+            sweepPadding = if (useJapaneseLogic) 0.2 else 0.0,
         )
 
         return components.map { component ->
@@ -692,17 +989,21 @@ object OwOCRMerger {
     // STAGE 5: reorderParagraphsInRows
     // ================================================================
 
-    private fun reorderParagraphsInRows(rows: List<Row>): List<Row> {
+    private fun reorderParagraphsInRows(rows: List<Row>, useJapaneseLogic: Boolean): List<Row> {
         return rows.map { row ->
             if (row.paragraphs.size < 2) return@map row
             val sorted = row.paragraphs.sortedBy { it.tightBoundingBox.x }
             val reordered = if (row.isVerticalOrRtl) sorted.reversed() else sorted
-            val withMixedOrientation = reorderMixedOrientationBlocks(reordered, row.isVerticalOrRtl)
+            val withMixedOrientation = if (useJapaneseLogic) {
+                reorderMixedOrientationBlocks(reordered)
+            } else {
+                reorderMixedOrientationBlocksLegacy(reordered, row.isVerticalOrRtl)
+            }
             row.copy(paragraphs = withMixedOrientation)
         }
     }
 
-    private fun reorderMixedOrientationBlocks(paragraphs: List<OcrResult>, isVerticalOrRtl: Boolean): List<OcrResult> {
+    private fun reorderMixedOrientationBlocks(paragraphs: List<OcrResult>): List<OcrResult> {
         if (paragraphs.size < 2) return paragraphs
 
         var result = paragraphs
@@ -757,6 +1058,37 @@ object OwOCRMerger {
         return result
     }
 
+    private fun reorderMixedOrientationBlocksLegacy(paragraphs: List<OcrResult>, isVerticalOrRtl: Boolean): List<OcrResult> {
+        if (paragraphs.size < 2) return paragraphs
+
+        val result = mutableListOf<OcrResult>()
+        val currentBlock = mutableListOf(paragraphs[0])
+        var currentOrientation = paragraphs[0].forcedOrientation == "vertical"
+
+        for (para in paragraphs.drop(1)) {
+            val paraOrientation = para.forcedOrientation == "vertical"
+
+            if (paraOrientation == currentOrientation) {
+                currentBlock.add(para)
+            } else {
+                if (currentOrientation != isVerticalOrRtl) {
+                    currentBlock.reverse()
+                }
+                result.addAll(currentBlock)
+                currentBlock.clear()
+                currentBlock.add(para)
+                currentOrientation = paraOrientation
+            }
+        }
+
+        if (currentOrientation != isVerticalOrRtl) {
+            currentBlock.reverse()
+        }
+        result.addAll(currentBlock)
+
+        return result
+    }
+
     // ================================================================
     // STAGE 6: flattenRowsToParagraphs
     // ================================================================
@@ -776,6 +1108,7 @@ object OwOCRMerger {
         shouldConnect: (T, T) -> Boolean,
         getStartCoord: (T) -> Double,
         getEndCoord: (T) -> Double,
+        sweepPadding: Double = 0.2,
     ): List<List<Int>> {
         if (items.isEmpty()) return emptyList()
         if (items.size == 1) return listOf(listOf(0))
@@ -800,9 +1133,9 @@ object OwOCRMerger {
 
             activeItems.retainAll { active ->
                 if (isReverseSweep) {
-                    active.end < currentStart - 0.2 // 20% of image height
+                    active.end < currentStart - sweepPadding
                 } else {
-                    active.end > currentStart - 0.2
+                    active.end > currentStart - sweepPadding
                 }
             }
 
