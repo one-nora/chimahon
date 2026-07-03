@@ -24,6 +24,7 @@ import kotlinx.collections.immutable.persistentListOf
 import tachiyomi.core.common.preference.TriState
 import tachiyomi.domain.category.model.AnimeCategory
 import tachiyomi.domain.library.model.LibraryDisplayMode
+import tachiyomi.domain.library.model.LibraryGroup
 import tachiyomi.domain.library.model.LibrarySort
 import tachiyomi.domain.library.model.sort
 import tachiyomi.i18n.MR
@@ -153,8 +154,15 @@ private fun ColumnScope.SortPage(
     screenModel: AnimeLibrarySettingsScreenModel,
 ) {
     val trackers by screenModel.trackersFlow.collectAsState()
-    val sortingMode = category.sort.type
-    val sortDescending = !category.sort.isAscending
+    val globalSortMode by screenModel.libraryPreferences.sortingMode().collectAsState()
+    val categorySort = category?.sort
+    val activeSort = if (screenModel.grouping == LibraryGroup.BY_DEFAULT && categorySort != null) {
+        categorySort
+    } else {
+        globalSortMode
+    }
+    val sortingMode = activeSort.type
+    val sortDescending = !activeSort.isAscending
 
     val options = remember(trackers.isEmpty()) {
         val trackerMeanPair = if (trackers.isNotEmpty()) {

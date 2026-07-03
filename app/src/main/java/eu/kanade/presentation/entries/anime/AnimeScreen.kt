@@ -99,6 +99,7 @@ import tachiyomi.domain.episode.service.missingEpisodesCount
 import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.source.anime.model.StubAnimeSource
 import tachiyomi.i18n.MR
+import tachiyomi.i18n.kmk.KMR
 import tachiyomi.presentation.core.components.FastScrollLazyVerticalGrid
 import tachiyomi.presentation.core.components.TwoPanelBox
 import tachiyomi.presentation.core.components.material.ExtendedFloatingActionButton
@@ -522,6 +523,7 @@ private fun AnimeScreenSmallImpl(
                             tagsProvider = { state.anime.genre },
                             onTagSearch = onTagSearch,
                             onCopyTagToClipboard = onCopyTagToClipboard,
+                            onSearch = onSearch,
                             modifier = Modifier.ignorePadding(offsetGridPaddingPx),
                         )
                     }
@@ -853,6 +855,7 @@ fun AnimeScreenLargeImpl(
                                 tagsProvider = { state.anime.genre },
                                 onTagSearch = onTagSearch,
                                 onCopyTagToClipboard = onCopyTagToClipboard,
+                                onSearch = onSearch,
                             )
                         }
                     },
@@ -1209,7 +1212,7 @@ private fun RelatedAnimeSection(
             .padding(vertical = MaterialTheme.padding.extraSmall),
     ) {
         Text(
-            text = stringResource(MR.strings.related_anime),
+            text = stringResource(KMR.strings.pref_source_related_mangas),
             style = MaterialTheme.typography.titleMedium,
             modifier = Modifier.padding(
                 start = MaterialTheme.padding.medium,

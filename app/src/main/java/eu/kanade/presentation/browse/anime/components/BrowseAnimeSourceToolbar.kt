@@ -30,7 +30,7 @@ fun BrowseAnimeSourceToolbar(
     searchQuery: String?,
     onSearchQueryChange: (String?) -> Unit,
     source: AnimeSource?,
-    displayMode: LibraryDisplayMode,
+    displayMode: LibraryDisplayMode?,
     onDisplayModeChange: (LibraryDisplayMode) -> Unit,
     navigateUp: () -> Unit,
     onWebViewClick: () -> Unit,
@@ -56,17 +56,19 @@ fun BrowseAnimeSourceToolbar(
             AppBarActions(
                 actions = persistentListOf<AppBar.AppBarAction>().builder()
                     .apply {
-                        add(
-                            AppBar.Action(
-                                title = stringResource(MR.strings.action_display_mode),
-                                icon = if (displayMode == LibraryDisplayMode.List) {
-                                    Icons.AutoMirrored.Filled.ViewList
-                                } else {
-                                    Icons.Filled.ViewModule
-                                },
-                                onClick = { selectingDisplayMode = true },
-                            ),
-                        )
+                        if (displayMode != null) {
+                            add(
+                                AppBar.Action(
+                                    title = stringResource(MR.strings.action_display_mode),
+                                    icon = if (displayMode == LibraryDisplayMode.List) {
+                                        Icons.AutoMirrored.Filled.ViewList
+                                    } else {
+                                        Icons.Filled.ViewModule
+                                    },
+                                    onClick = { selectingDisplayMode = true },
+                                ),
+                            )
+                        }
                         if (isLocalSource) {
                             add(
                                 AppBar.OverflowAction(

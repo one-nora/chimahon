@@ -41,13 +41,14 @@ import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ElevatedSuggestionChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ProvideTextStyle
-import androidx.compose.material3.SuggestionChip
+import androidx.compose.material3.SuggestionChipDefaults as SuggestionChipDefaultsM3
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -82,6 +83,7 @@ import coil3.request.ImageRequest
 import coil3.request.crossfade
 import eu.kanade.domain.ui.UiPreferences
 import eu.kanade.presentation.components.DropdownMenu
+
 import eu.kanade.presentation.entries.components.DotSeparatorText
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.animesource.model.SAnime
@@ -275,6 +277,7 @@ fun ExpandableAnimeDescription(
     tagsProvider: () -> List<String>?,
     onTagSearch: (String) -> Unit,
     onCopyTagToClipboard: (tag: String) -> Unit,
+    onSearch: (query: String, global: Boolean) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier) {
@@ -320,6 +323,13 @@ fun ExpandableAnimeDescription(
                         },
                     )
                     DropdownMenuItem(
+                        text = { Text(text = stringResource(MR.strings.action_global_search)) },
+                        onClick = {
+                            onSearch(tagSelected, true)
+                            showMenu = false
+                        },
+                    )
+                    DropdownMenuItem(
                         text = { Text(text = stringResource(MR.strings.action_copy_to_clipboard)) },
                         onClick = {
                             onCopyTagToClipboard(tagSelected)
@@ -333,14 +343,26 @@ fun ExpandableAnimeDescription(
                         horizontalArrangement = Arrangement.spacedBy(MaterialTheme.padding.extraSmall),
                     ) {
                         tags.forEach {
-                            TagsChip(
-                                modifier = DefaultTagChipModifier,
-                                text = it,
-                                onClick = {
-                                    tagSelected = it
-                                    showMenu = true
-                                },
-                            )
+                            CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 0.dp) {
+                                ElevatedSuggestionChip(
+                                    modifier = DefaultTagChipModifier,
+                                    onClick = {
+                                        tagSelected = it
+                                        showMenu = true
+                                    },
+                                    label = {
+                                        Text(
+                                            text = it,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                    },
+                                    colors = SuggestionChipDefaultsM3.elevatedSuggestionChipColors(
+                                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                    ),
+                                )
+                            }
                         }
                     }
                 } else {
@@ -349,14 +371,26 @@ fun ExpandableAnimeDescription(
                         horizontalArrangement = Arrangement.spacedBy(MaterialTheme.padding.extraSmall),
                     ) {
                         items(items = tags) {
-                            TagsChip(
-                                modifier = DefaultTagChipModifier,
-                                text = it,
-                                onClick = {
-                                    tagSelected = it
-                                    showMenu = true
-                                },
-                            )
+                            CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 0.dp) {
+                                ElevatedSuggestionChip(
+                                    modifier = DefaultTagChipModifier,
+                                    onClick = {
+                                        tagSelected = it
+                                        showMenu = true
+                                    },
+                                    label = {
+                                        Text(
+                                            text = it,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                    },
+                                    colors = SuggestionChipDefaultsM3.elevatedSuggestionChipColors(
+                                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                    ),
+                                )
+                            }
                         }
                     }
                 }
@@ -714,21 +748,6 @@ private fun String.toCollapsedMarkdown(): String {
 }
 
 private val DefaultTagChipModifier = Modifier.padding(vertical = 4.dp)
-
-@Composable
-private fun TagsChip(
-    text: String,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit,
-) {
-    CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 0.dp) {
-        SuggestionChip(
-            modifier = modifier,
-            onClick = onClick,
-            label = { Text(text = text, style = MaterialTheme.typography.bodySmall) },
-        )
-    }
-}
 
 @Composable
 private fun RowScope.AnimeActionButton(

@@ -62,6 +62,7 @@ import mihon.presentation.core.util.collectAsLazyPagingItems
 import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.domain.entries.anime.interactor.GetAnime
 import tachiyomi.domain.entries.anime.model.Anime
+import tachiyomi.domain.library.model.LibraryDisplayMode
 import tachiyomi.domain.source.anime.model.StubAnimeSource
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.material.ExtendedFloatingActionButton
@@ -169,7 +170,7 @@ data class BrowseAnimeSourceScreen(
                             searchQuery = state.toolbarQuery,
                             onSearchQueryChange = screenModel::setToolbarQuery,
                             source = screenModel.source,
-                            displayMode = screenModel.displayMode,
+                            displayMode = screenModel.displayMode ?: LibraryDisplayMode.default,
                             onDisplayModeChange = { screenModel.displayMode = it },
                             navigateUp = navigateUp,
                             onWebViewClick = onWebViewClick,
@@ -259,7 +260,7 @@ data class BrowseAnimeSourceScreen(
                 columns = screenModel.getColumnsPreference(LocalConfiguration.current.orientation),
                 entries = screenModel.getColumnsPreferenceForCurrentOrientation(LocalConfiguration.current.orientation),
                 topBarHeight = topBarHeight,
-                displayMode = screenModel.displayMode,
+                displayMode = screenModel.displayMode ?: LibraryDisplayMode.default,
                 snackbarHostState = snackbarHostState,
                 contentPadding = paddingValues,
                 onWebViewClick = onWebViewClick,

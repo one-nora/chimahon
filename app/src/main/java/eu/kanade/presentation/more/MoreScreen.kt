@@ -23,12 +23,12 @@ import androidx.compose.material.icons.outlined.GetApp
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.NewReleases
-import androidx.compose.material.icons.outlined.PlayCircle
 import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.QueryStats
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Storage
+import androidx.compose.material.icons.outlined.VideoLibrary
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -241,7 +241,7 @@ fun MoreScreen(
                         )
                         NavTabLayout.KEY_ANIME -> TextPreferenceWidget(
                             title = stringResource(MR.strings.label_anime),
-                            icon = Icons.Outlined.PlayCircle,
+                            icon = Icons.Outlined.VideoLibrary,
                             onPreferenceClick = onClickAnime,
                         )
                     }
