@@ -21,8 +21,8 @@
  *
  * INIT ORDER (LensEngine.kt):
  *   1. System.loadLibrary("lens_asset_init")          ← this library
- *   2. System.loadLibrary("lens_ondevice_engine_base")
- *   3. System.loadLibrary("lens_ondevice_engine_play_ml")
+ *   2. System.load(.../screenai_models/lib/<abi>/liblens_ondevice_engine_base.so)
+ *   3. System.load(.../screenai_models/lib/<abi>/liblens_ondevice_engine_play_ml.so)
  *   4. registry.create()
  *   5. nativeInitAssetManager(context, cacheDir)       ← seeds AssetManager
  *   6. registry.registerModules(...)                   ← registers split handler
