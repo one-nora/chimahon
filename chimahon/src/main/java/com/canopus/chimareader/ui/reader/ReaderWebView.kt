@@ -1386,9 +1386,7 @@ private fun fontJS(settings: ReaderSettings, targetVar: String): String = buildS
             var fontFace = document.createElement('style');
             fontFace.textContent = "@font-face { font-family: 'HoshiCustomFont'; src: url('${jsEscape(fontUrl)}'); }";
             document.head.appendChild(fontFace);
-            document.fonts.ready.then(function() {
-                $targetVar.style.setProperty('font-family', 'HoshiCustomFont', 'important');
-            });
+            $targetVar.style.setProperty('font-family', 'HoshiCustomFont', 'important');
             """.trimIndent(),
         )
     } else {

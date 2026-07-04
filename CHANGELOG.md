@@ -4,6 +4,11 @@ All notable changes to Chimahon are documented here.
 
 The format follows a Keep a Changelog style and uses Semantic Versioning.
 
+## [Unreleased]
+
+### Fixed
+- Novel reader bookmark restoration now uses character-based progress like Hoshi Reader
+
 ## [v2.1.3]
 
 ### Changed
