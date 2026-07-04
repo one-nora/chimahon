@@ -8,6 +8,7 @@ The format follows a Keep a Changelog style and uses Semantic Versioning.
 
 ### Fixed
 - Novel reader bookmark restoration now uses character-based progress like Hoshi Reader
+- Anime backup restore no longer fails when anime domain interactors are requested
 
 ## [v2.1.3]
 
