@@ -92,6 +92,7 @@ import eu.kanade.tachiyomi.ui.dictionary.getDictionaryTitle
 import eu.kanade.tachiyomi.ui.dictionary.invalidateDictionaryTitle
 import eu.kanade.tachiyomi.util.system.toast
 import kotlinx.collections.immutable.persistentListOf
+import kotlinx.collections.immutable.toPersistentList
 import kotlinx.collections.immutable.toPersistentMap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -115,6 +116,9 @@ import tachiyomi.presentation.core.util.collectAsState
 import eu.kanade.tachiyomi.data.ocr.ModelDownloader
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import eu.kanade.presentation.more.settings.widget.EditTextPreferenceWidget
+import eu.kanade.presentation.more.settings.widget.PreferenceGroupHeader
+import eu.kanade.presentation.more.settings.widget.SwitchPreferenceWidget
 import eu.kanade.presentation.more.settings.widget.TextPreferenceWidget
 import eu.kanade.presentation.more.settings.screen.appearance.AppCustomThemeColorPickerScreen
 import cafe.adriel.voyager.navigator.LocalNavigator
@@ -287,7 +291,7 @@ object SettingsDictionaryScreen : SearchableSettings {
 
     @ReadOnlyComposable
     @Composable
-    override fun getTitleRes() = MR.strings.pref_category_dictionary
+    override fun getTitleRes() = KMR.strings.pref_category_dictionaries_and_audio
 
     @Composable
     override fun getPreferences(): List<Preference> {
@@ -295,10 +299,6 @@ object SettingsDictionaryScreen : SearchableSettings {
         val scope = rememberCoroutineScope()
         val dictionaryPreferences = remember { Injekt.get<DictionaryPreferences>() }
         var errorDialogText by remember { mutableStateOf<String?>(null) }
-
-        // Trigger recomposition when profile state changes
-        val rawProfiles by dictionaryPreferences.rawProfiles().collectAsState()
-        val rawActiveProfileId by dictionaryPreferences.rawActiveProfileId().collectAsState()
 
         LaunchedEffect(Unit) {
             loadDictionaryList(context)
@@ -539,6 +539,7 @@ object SettingsDictionaryScreen : SearchableSettings {
 
         val popupSwipeThresholdPref = dictionaryPreferences.popupSwipeThreshold()
         val popupSwipeThreshold by popupSwipeThresholdPref.collectAsState()
+        val popupSwipeToDismiss by dictionaryPreferences.popupSwipeToDismiss().collectAsState()
 
         val fontSizePref = dictionaryPreferences.fontSize()
         val fontSize by fontSizePref.collectAsState()
@@ -561,39 +562,66 @@ object SettingsDictionaryScreen : SearchableSettings {
         val themeModePref = dictionaryPreferences.themeMode()
         val themeMode by themeModePref.collectAsState()
 
-        return listOf(
-            Preference.PreferenceGroup(
-                title = stringResource(KMR.strings.pref_dict_layout),
-                preferenceItems = persistentListOf(
-                    Preference.PreferenceItem.SliderPreference(
-                        value = width,
-                        title = stringResource(MR.strings.pref_dict_popup_width),
-                        subtitle = "${width}px",
-                        valueRange = 200..1920 step 10,
-                        steps = 171,
-                        onValueChanged = { widthPref.set(it) },
-                    ),
-                    Preference.PreferenceItem.SliderPreference(
-                        value = height,
-                        title = stringResource(MR.strings.pref_dict_popup_height),
-                        subtitle = "${height}px",
-                        valueRange = 100..1080 step 10,
-                        steps = 97,
-                        onValueChanged = { heightPref.set(it) },
-                    ),
-                    Preference.PreferenceItem.ListPreference(
-                        preference = dictionaryPreferences.popupMode(),
-                        entries = persistentListOf(
-                            "floating" to "Floating",
-                            "full_width" to "Full-width",
-                            "full_height" to "Full-height",
-                        ).associate { it.first to it.second }.toPersistentMap(),
-                        title = "Popup mode",
-                    ),
-                    Preference.PreferenceItem.SwitchPreference(
-                        preference = dictionaryPreferences.popupSwipeToDismiss(),
-                        title = stringResource(MR.strings.pref_dict_popup_swipe_to_dismiss),
-                    ),
+        // Keep multi-select set prefs aligned with the boolean flags used by the popup.
+        val frequencyModesPref = dictionaryPreferences.frequencyDisplayModes()
+        val pitchModesPref = dictionaryPreferences.pitchDisplayModes()
+        LaunchedEffect(Unit) {
+            frequencyModesPref.set(
+                buildSet {
+                    if (dictionaryPreferences.showFrequencyHarmonic().get()) add(DictionaryPreferences.FREQ_HARMONIC)
+                    if (dictionaryPreferences.showFrequencyAverage().get()) add(DictionaryPreferences.FREQ_AVERAGE)
+                },
+            )
+            pitchModesPref.set(
+                buildSet {
+                    if (dictionaryPreferences.showPitchDiagram().get()) add(DictionaryPreferences.PITCH_DIAGRAM)
+                    if (dictionaryPreferences.showPitchNumber().get()) add(DictionaryPreferences.PITCH_NUMBER)
+                    if (dictionaryPreferences.showPitchText().get()) add(DictionaryPreferences.PITCH_TEXT)
+                },
+            )
+        }
+
+        @Suppress("UNCHECKED_CAST")
+        val layoutItems = buildList<Preference.PreferenceItem<*, *>> {
+            add(
+                Preference.PreferenceItem.SliderPreference(
+                    value = width,
+                    title = stringResource(MR.strings.pref_dict_popup_width),
+                    subtitle = "${width}px",
+                    valueRange = 200..1920 step 10,
+                    steps = 171,
+                    onValueChanged = { widthPref.set(it) },
+                ),
+            )
+            add(
+                Preference.PreferenceItem.SliderPreference(
+                    value = height,
+                    title = stringResource(MR.strings.pref_dict_popup_height),
+                    subtitle = "${height}px",
+                    valueRange = 100..1080 step 10,
+                    steps = 97,
+                    onValueChanged = { heightPref.set(it) },
+                ),
+            )
+            add(
+                Preference.PreferenceItem.ListPreference(
+                    preference = dictionaryPreferences.popupMode(),
+                    entries = persistentListOf(
+                        "floating" to "Floating",
+                        "full_width" to "Full-width",
+                        "full_height" to "Full-height",
+                    ).associate { it.first to it.second }.toPersistentMap(),
+                    title = "Popup mode",
+                ),
+            )
+            add(
+                Preference.PreferenceItem.SwitchPreference(
+                    preference = dictionaryPreferences.popupSwipeToDismiss(),
+                    title = stringResource(MR.strings.pref_dict_popup_swipe_to_dismiss),
+                ),
+            )
+            if (popupSwipeToDismiss) {
+                add(
                     Preference.PreferenceItem.SliderPreference(
                         value = popupSwipeThreshold,
                         title = stringResource(MR.strings.pref_dict_popup_swipe_threshold),
@@ -602,7 +630,14 @@ object SettingsDictionaryScreen : SearchableSettings {
                         steps = 79,
                         onValueChanged = { popupSwipeThresholdPref.set(it) },
                     ),
-                ),
+                )
+            }
+        }.toPersistentList() as kotlinx.collections.immutable.ImmutableList<Preference.PreferenceItem<out Any, out Any>>
+
+        return listOf(
+            Preference.PreferenceGroup(
+                title = stringResource(KMR.strings.pref_dict_layout),
+                preferenceItems = layoutItems,
             ),
             Preference.PreferenceGroup(
                 title = stringResource(KMR.strings.pref_dict_typography),
@@ -738,47 +773,37 @@ object SettingsDictionaryScreen : SearchableSettings {
             Preference.PreferenceGroup(
                 title = stringResource(MR.strings.pref_category_theme),
                 preferenceItems = persistentListOf(
+                    Preference.PreferenceItem.CustomPreference(
+                        title = "theme_chips",
+                        content = {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                val chips = listOf(
+                                    "system" to stringResource(MR.strings.theme_system),
+                                    "light" to stringResource(MR.strings.theme_light),
+                                    "dark" to stringResource(MR.strings.theme_dark),
+                                    "pure_black" to stringResource(MR.strings.pref_dict_theme_pure_black),
+                                )
+                                chips.forEach { (value, label) ->
+                                    FilterChip(
+                                        selected = themeMode == value,
+                                        onClick = { themeModePref.set(value) },
+                                        label = { Text(label) },
+                                    )
+                                }
+                            }
+                        },
+                    ),
                     Preference.PreferenceItem.TextPreference(
                         title = stringResource(KMR.strings.pref_custom_color),
                         subtitle = stringResource(KMR.strings.custom_color_description),
                         onClick = {
                             navigator.push(AppCustomThemeColorPickerScreen(isDictionary = true))
-                        },
-                    ),
-                    Preference.PreferenceItem.CustomPreference(
-                        title = "Dictionary theme",
-                        content = {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                            ) {
-                                Text(
-                                    text = "Dictionary theme",
-                                    style = MaterialTheme.typography.titleMedium,
-                                )
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(top = 8.dp)
-                                        .horizontalScroll(rememberScrollState()),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                ) {
-                                    val chips = listOf(
-                                        "system" to stringResource(MR.strings.theme_system),
-                                        "light" to stringResource(MR.strings.theme_light),
-                                        "dark" to stringResource(MR.strings.theme_dark),
-                                        "pure_black" to stringResource(MR.strings.pref_dict_theme_pure_black),
-                                    )
-                                    chips.forEach { (value, label) ->
-                                        FilterChip(
-                                            selected = themeMode == value,
-                                            onClick = { themeModePref.set(value) },
-                                            label = { Text(label) },
-                                        )
-                                    }
-                                }
-                            }
                         },
                     ),
                     Preference.PreferenceItem.SwitchPreference(
@@ -847,87 +872,41 @@ object SettingsDictionaryScreen : SearchableSettings {
             Preference.PreferenceGroup(
                 title = stringResource(KMR.strings.pref_dict_content),
                 preferenceItems = persistentListOf(
-                    Preference.PreferenceItem.CustomPreference(
+                    Preference.PreferenceItem.MultiSelectListPreference(
+                        preference = frequencyModesPref,
+                        entries = persistentListOf(
+                            DictionaryPreferences.FREQ_HARMONIC to "Harmonic rank",
+                            DictionaryPreferences.FREQ_AVERAGE to
+                                stringResource(MR.strings.pref_dict_show_frequency_average),
+                        ).associate { it.first to it.second }.toPersistentMap(),
                         title = stringResource(MR.strings.pref_dict_frequency_display),
-                        content = {
-                            val showFreqHarmonicPref = dictionaryPreferences.showFrequencyHarmonic()
-                            val showFreqHarmonic by showFreqHarmonicPref.collectAsState()
-                            val showFreqAveragePref = dictionaryPreferences.showFrequencyAverage()
-                            val showFreqAverage by showFreqAveragePref.collectAsState()
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp),
-                            ) {
-                                Text(
-                                    text = stringResource(MR.strings.pref_dict_frequency_display),
-                                    style = MaterialTheme.typography.titleMedium,
-                                )
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                ) {
-                                    FilterChip(
-                                        selected = showFreqHarmonic,
-                                        onClick = { showFreqHarmonicPref.set(!showFreqHarmonic) },
-                                        label = { Text("Harmonic rank") },
-                                        modifier = Modifier.weight(1f),
-                                    )
-                                    FilterChip(
-                                        selected = showFreqAverage,
-                                        onClick = { showFreqAveragePref.set(!showFreqAverage) },
-                                        label = {
-                                            Text(stringResource(MR.strings.pref_dict_show_frequency_average))
-                                        },
-                                        modifier = Modifier.weight(1f),
-                                    )
-                                }
-                            }
+                        onValueChanged = { selected ->
+                            dictionaryPreferences.showFrequencyHarmonic()
+                                .set(DictionaryPreferences.FREQ_HARMONIC in selected)
+                            dictionaryPreferences.showFrequencyAverage()
+                                .set(DictionaryPreferences.FREQ_AVERAGE in selected)
+                            true
                         },
                     ),
-                    Preference.PreferenceItem.CustomPreference(
+                    Preference.PreferenceItem.MultiSelectListPreference(
+                        preference = pitchModesPref,
+                        entries = persistentListOf(
+                            DictionaryPreferences.PITCH_DIAGRAM to
+                                stringResource(MR.strings.pref_dict_pitch_diagram),
+                            DictionaryPreferences.PITCH_NUMBER to
+                                stringResource(MR.strings.pref_dict_pitch_number),
+                            DictionaryPreferences.PITCH_TEXT to
+                                stringResource(MR.strings.pref_dict_pitch_text),
+                        ).associate { it.first to it.second }.toPersistentMap(),
                         title = stringResource(MR.strings.pref_dict_pitch_accent_display),
-                        content = {
-                            val showPitchDiagramPref = dictionaryPreferences.showPitchDiagram()
-                            val showPitchDiagram by showPitchDiagramPref.collectAsState()
-                            val showPitchNumberPref = dictionaryPreferences.showPitchNumber()
-                            val showPitchNumber by showPitchNumberPref.collectAsState()
-                            val showPitchTextPref = dictionaryPreferences.showPitchText()
-                            val showPitchText by showPitchTextPref.collectAsState()
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp),
-                            ) {
-                                Text(
-                                    text = stringResource(MR.strings.pref_dict_pitch_accent_display),
-                                    style = MaterialTheme.typography.titleMedium,
-                                )
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .horizontalScroll(rememberScrollState()),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                ) {
-                                    FilterChip(
-                                        selected = showPitchDiagram,
-                                        onClick = { showPitchDiagramPref.set(!showPitchDiagram) },
-                                        label = { Text(stringResource(MR.strings.pref_dict_pitch_diagram)) },
-                                    )
-                                    FilterChip(
-                                        selected = showPitchNumber,
-                                        onClick = { showPitchNumberPref.set(!showPitchNumber) },
-                                        label = { Text(stringResource(MR.strings.pref_dict_pitch_number)) },
-                                    )
-                                    FilterChip(
-                                        selected = showPitchText,
-                                        onClick = { showPitchTextPref.set(!showPitchText) },
-                                        label = { Text(stringResource(MR.strings.pref_dict_pitch_text)) },
-                                    )
-                                }
-                            }
+                        onValueChanged = { selected ->
+                            dictionaryPreferences.showPitchDiagram()
+                                .set(DictionaryPreferences.PITCH_DIAGRAM in selected)
+                            dictionaryPreferences.showPitchNumber()
+                                .set(DictionaryPreferences.PITCH_NUMBER in selected)
+                            dictionaryPreferences.showPitchText()
+                                .set(DictionaryPreferences.PITCH_TEXT in selected)
+                            true
                         },
                     ),
                     Preference.PreferenceItem.SwitchPreference(
@@ -1925,355 +1904,332 @@ object SettingsDictionaryScreen : SearchableSettings {
             }
         }
 
-        return Preference.PreferenceGroup(
-            title = stringResource(MR.strings.pref_anki),
-            preferenceItems = persistentListOf(
+        val deckEntries = remember(decks, selectedDeck) {
+            buildMap {
+                decks.forEach { put(it, it) }
+                if (selectedDeck.isNotBlank()) put(selectedDeck, selectedDeck)
+            }.toPersistentMap()
+        }
+        val modelEntries = remember(models, selectedModel) {
+            buildMap {
+                models.forEach { put(it, it) }
+                if (selectedModel.isNotBlank()) put(selectedModel, selectedModel)
+            }.toPersistentMap()
+        }
+        val dupScopeEntries = persistentListOf(
+            "deck" to "Deck only",
+            "all" to "Everywhere",
+        ).associate { it.first to it.second }.toPersistentMap()
+        val dupActionEntries = persistentListOf(
+            "prevent" to stringResource(MR.strings.pref_anki_duplicate_prevent),
+            "add" to stringResource(MR.strings.pref_anki_duplicate_add),
+            "overwrite" to stringResource(MR.strings.pref_anki_duplicate_overwrite),
+        ).associate { it.first to it.second }.toPersistentMap()
+        val cropModeEntries = persistentListOf(
+            "full" to "Full Image",
+            "crop" to "Crop Selection",
+        ).associate { it.first to it.second }.toPersistentMap()
+
+        val preferenceItems = buildList<Preference.PreferenceItem<*, *>> {
+            add(
                 Preference.PreferenceItem.CustomPreference(
-                    title = stringResource(MR.strings.pref_anki),
+                    title = stringResource(MR.strings.pref_anki_enable),
                     content = {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp)
-                                .padding(bottom = 8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            // Enable toggle
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Text(
-                                    text = stringResource(MR.strings.pref_anki_enable),
-                                    style = MaterialTheme.typography.bodyLarge,
-                                )
-                                Switch(
-                                    checked = enabled,
-                                    onCheckedChange = { checked ->
-                                        if (!checked) {
-                                            updateProfile { copy(ankiEnabled = false) }
-                                            return@Switch
-                                        }
-                                        scope.launch {
-                                            val installed = bridge.isAnkiDroidInstalled()
-                                            if (!installed) {
-                                                context.toast(MR.strings.pref_anki_no_ankidroid)
-                                                return@launch
-                                            }
-                                            if (!bridge.hasPermission()) {
-                                                if (activity != null) {
-                                                    pendingPermissionCheck = true
-                                                    bridge.requestPermission(activity)
-                                                }
-                                                return@launch
-                                            }
-                                            updateProfile { copy(ankiEnabled = true) }
-                                        }
-                                    },
-                                )
-                            }
-
-                            if (!enabled) return@CustomPreference
-
-                            if (ankiInstalled == false) {
-                                Text(
-                                    text = stringResource(MR.strings.pref_anki_no_ankidroid),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.error,
-                                )
-                                return@CustomPreference
-                            }
-
-                            if (isLoading) {
-                                Text(
-                                    text = stringResource(MR.strings.pref_anki_loading),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                return@CustomPreference
-                            }
-
-                            // Deck selector
-                            AnkiDropdownPreference(
-                                label = stringResource(MR.strings.pref_anki_deck),
-                                value = selectedDeck,
-                                options = decks,
-                                onValueChange = { updateProfile { copy(ankiDeck = it) } },
-                            )
-
-                            // Model selector
-                            AnkiDropdownPreference(
-                                label = stringResource(MR.strings.pref_anki_model),
-                                value = selectedModel,
-                                options = models,
-                                onValueChange = {
-                                    if (it == selectedModel) {
-                                        return@AnkiDropdownPreference
+                        SwitchPreferenceWidget(
+                            title = stringResource(MR.strings.pref_anki_enable),
+                            checked = enabled,
+                            onCheckedChanged = { checked ->
+                                if (!checked) {
+                                    updateProfile { copy(ankiEnabled = false) }
+                                    return@SwitchPreferenceWidget
+                                }
+                                scope.launch {
+                                    val installed = bridge.isAnkiDroidInstalled()
+                                    if (!installed) {
+                                        context.toast(MR.strings.pref_anki_no_ankidroid)
+                                        return@launch
                                     }
-                                    updateProfile { copy(ankiModel = it, ankiFieldMap = "{}") }
+                                    if (!bridge.hasPermission()) {
+                                        if (activity != null) {
+                                            pendingPermissionCheck = true
+                                            bridge.requestPermission(activity)
+                                        }
+                                        return@launch
+                                    }
+                                    updateProfile { copy(ankiEnabled = true) }
+                                }
+                            },
+                        )
+                    },
+                ),
+            )
+
+            if (!enabled) {
+                // only the enable switch
+            } else if (ankiInstalled == false) {
+                add(
+                    Preference.PreferenceItem.InfoPreference(
+                        title = stringResource(MR.strings.pref_anki_no_ankidroid),
+                    ),
+                )
+            } else if (isLoading) {
+                add(
+                    Preference.PreferenceItem.InfoPreference(
+                        title = stringResource(MR.strings.pref_anki_loading),
+                    ),
+                )
+            } else {
+                if (deckEntries.isNotEmpty()) {
+                    add(
+                        Preference.PreferenceItem.BasicListPreference(
+                            value = selectedDeck,
+                            entries = deckEntries,
+                            title = stringResource(MR.strings.pref_anki_deck),
+                            onValueChanged = { updateProfile { copy(ankiDeck = it) } },
+                        ),
+                    )
+                } else {
+                    add(
+                        Preference.PreferenceItem.TextPreference(
+                            title = stringResource(MR.strings.pref_anki_deck),
+                            subtitle = stringResource(MR.strings.pref_anki_select_deck),
+                        ),
+                    )
+                }
+
+                if (modelEntries.isNotEmpty()) {
+                    add(
+                        Preference.PreferenceItem.BasicListPreference(
+                            value = selectedModel,
+                            entries = modelEntries,
+                            title = stringResource(MR.strings.pref_anki_model),
+                            onValueChanged = { newModel ->
+                                if (newModel != selectedModel) {
+                                    updateProfile { copy(ankiModel = newModel, ankiFieldMap = "{}") }
+                                }
+                            },
+                        ),
+                    )
+                } else {
+                    add(
+                        Preference.PreferenceItem.TextPreference(
+                            title = stringResource(MR.strings.pref_anki_model),
+                            subtitle = stringResource(MR.strings.pref_anki_select_model),
+                        ),
+                    )
+                }
+
+                add(
+                    Preference.PreferenceItem.CustomPreference(
+                        title = stringResource(MR.strings.pref_anki_default_tags),
+                        content = {
+                            EditTextPreferenceWidget(
+                                title = stringResource(MR.strings.pref_anki_default_tags),
+                                subtitle = tags.ifBlank { "—" },
+                                dialogSubtitle = "Comma-separated tags",
+                                icon = null,
+                                value = tags,
+                                canBeBlank = true,
+                                formatSubtitle = false,
+                                onConfirm = {
+                                    updateProfile { copy(ankiTags = it) }
+                                    true
                                 },
                             )
+                        },
+                    ),
+                )
 
-                            // Field mapping
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { fieldMappingExpanded = !fieldMappingExpanded }
-                                    .padding(top = 4.dp),
-                            ) {
+                // Field mapping — collapsible section header matches PreferenceGroupHeader style
+                add(
+                    Preference.PreferenceItem.CustomPreference(
+                        title = stringResource(MR.strings.pref_anki_field_mapping),
+                        content = {
+                            Column(modifier = Modifier.fillMaxWidth()) {
                                 Row(
-                                    modifier = Modifier.fillMaxWidth(),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { fieldMappingExpanded = !fieldMappingExpanded }
+                                        .padding(bottom = 8.dp, top = 14.dp)
+                                        .padding(horizontal = 16.dp),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
                                     Text(
                                         text = stringResource(MR.strings.pref_anki_field_mapping),
-                                        style = MaterialTheme.typography.titleSmall,
+                                        color = MaterialTheme.colorScheme.secondary,
+                                        style = MaterialTheme.typography.bodyMedium,
                                     )
                                     Icon(
-                                        imageVector = if (fieldMappingExpanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
+                                        imageVector = if (fieldMappingExpanded) {
+                                            Icons.Outlined.ExpandLess
+                                        } else {
+                                            Icons.Outlined.ExpandMore
+                                        },
                                         contentDescription = if (fieldMappingExpanded) "Collapse" else "Expand",
+                                        tint = MaterialTheme.colorScheme.secondary,
                                         modifier = Modifier.size(20.dp),
                                     )
                                 }
-                            }
 
-                            if (fieldMappingExpanded) {
-                                if (selectedModel.isNotBlank() && modelFields.isEmpty() && ankiInstalled == true) {
-                                    Text(
-                                        text = "Loading model fields...",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
-
-                                modelFields.forEach { fieldName ->
-                                    val storageValue = fieldMap[fieldName] ?: ""
-                                    val displayValue = storageValue
-                                        .ifBlank { "{}" }
-                                    AnkiFieldMappingRow(
-                                        fieldName = fieldName,
-                                        fieldValue = displayValue,
-                                        onValueChange = { newDisplayValue ->
-                                            setFieldValue(fieldName, newDisplayValue, false)
-                                        },
-                                        dictionaryNames = dictionaries,
-                                    )
-                                }
-
-                                if (customFieldNames.isNotEmpty()) {
-                                    Text(
-                                        text = "Custom fields",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.padding(top = 8.dp),
-                                    )
-                                }
-
-                                customFieldNames.forEach { fieldName ->
-                                    val storageValue = fieldMap[fieldName] ?: ""
-                                    val displayValue = storageValue
-                                        .ifBlank { "{}" }
-                                    AnkiFieldMappingRow(
-                                        fieldName = fieldName,
-                                        fieldValue = displayValue,
-                                        onValueChange = { newDisplayValue ->
-                                            setFieldValue(fieldName, newDisplayValue, true)
-                                        },
-                                        onDeleteField = {
-                                            removeCustomField(fieldName)
-                                        },
-                                        dictionaryNames = dictionaries,
-                                    )
-                                }
-
-                                OutlinedTextField(
-                                    value = newCustomFieldName,
-                                    onValueChange = { newCustomFieldName = it },
-                                    label = { Text("Add custom field") },
-                                    singleLine = true,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(top = 8.dp),
-                                )
-
-                                TextButton(
-                                    onClick = {
-                                        val candidate = newCustomFieldName.trim()
-                                        val alreadyExists = (modelFields + customFieldNames)
-                                            .any { it.equals(candidate, ignoreCase = true) }
-                                        if (candidate.isBlank() || alreadyExists) {
-                                            return@TextButton
+                                if (fieldMappingExpanded) {
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 16.dp)
+                                            .padding(bottom = 8.dp),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                                    ) {
+                                        if (selectedModel.isNotBlank() && modelFields.isEmpty() && ankiInstalled == true) {
+                                            Text(
+                                                text = "Loading model fields...",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
                                         }
-                                        setFieldValue(candidate, "", true)
-                                        newCustomFieldName = ""
-                                    },
-                                    modifier = Modifier.align(Alignment.End),
-                                ) {
-                                    Text("Add field")
-                                }
-                            }
 
-                            // Duplicate handling
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Text(
-                                    text = stringResource(MR.strings.pref_anki_check_duplicates),
-                                    style = MaterialTheme.typography.bodyLarge,
-                                )
-                                Switch(
-                                    checked = dupCheck,
-                                    onCheckedChange = { updateProfile { copy(ankiDupCheck = it) } },
-                                )
-                            }
+                                        modelFields.forEach { fieldName ->
+                                            val storageValue = fieldMap[fieldName] ?: ""
+                                            val displayValue = storageValue.ifBlank { "{}" }
+                                            AnkiFieldMappingRow(
+                                                fieldName = fieldName,
+                                                fieldValue = displayValue,
+                                                onValueChange = { newDisplayValue ->
+                                                    setFieldValue(fieldName, newDisplayValue, false)
+                                                },
+                                                dictionaryNames = dictionaries,
+                                            )
+                                        }
 
-                            if (dupCheck) {
-                                AnkiDropdownPreference(
-                                    label = stringResource(MR.strings.pref_anki_duplicate_scope),
-                                    value = if (dupScope == "all") "Everywhere" else "Deck only",
-                                    options = listOf("deck", "all"),
-                                    displayOptions = listOf("Deck only", "Everywhere"),
-                                    onValueChange = { updateProfile { copy(ankiDupScope = it) } },
-                                )
-                                AnkiDropdownPreference(
-                                    label = stringResource(MR.strings.pref_anki_duplicate_action),
-                                    value = when (dupAction) {
-                                        "add" -> stringResource(MR.strings.pref_anki_duplicate_add)
-                                        "overwrite" -> stringResource(MR.strings.pref_anki_duplicate_overwrite)
-                                        else -> stringResource(MR.strings.pref_anki_duplicate_prevent)
-                                    },
-                                    options = listOf("prevent", "add", "overwrite"),
-                                    displayOptions = listOf(
-                                        stringResource(MR.strings.pref_anki_duplicate_prevent),
-                                        stringResource(MR.strings.pref_anki_duplicate_add),
-                                        stringResource(MR.strings.pref_anki_duplicate_overwrite),
-                                    ),
-                                    onValueChange = { updateProfile { copy(ankiDupAction = it) } },
-                                )
-                            }
+                                        if (customFieldNames.isNotEmpty()) {
+                                            Text(
+                                                text = "Custom fields",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.padding(top = 8.dp),
+                                            )
+                                        }
 
-                            // Default tags
-                            OutlinedTextField(
-                                value = tags,
-                                onValueChange = { updateProfile { copy(ankiTags = it) } },
-                                label = { Text(stringResource(MR.strings.pref_anki_default_tags)) },
-                                singleLine = true,
-                                modifier = Modifier.fillMaxWidth(),
-                                supportingText = { Text("Comma-separated tags") },
-                            )
+                                        customFieldNames.forEach { fieldName ->
+                                            val storageValue = fieldMap[fieldName] ?: ""
+                                            val displayValue = storageValue.ifBlank { "{}" }
+                                            AnkiFieldMappingRow(
+                                                fieldName = fieldName,
+                                                fieldValue = displayValue,
+                                                onValueChange = { newDisplayValue ->
+                                                    setFieldValue(fieldName, newDisplayValue, true)
+                                                },
+                                                onDeleteField = { removeCustomField(fieldName) },
+                                                dictionaryNames = dictionaries,
+                                            )
+                                        }
 
-                            // Crop mode
-                            var cropModeExpanded by remember { mutableStateOf(false) }
-                            val cropModeOptions = listOf("full" to "Full Image", "crop" to "Crop Selection")
-                            val cropModeDisplay = cropModeOptions.find { it.first == cropMode }?.second ?: "Full Image"
-
-                            ExposedDropdownMenuBox(
-                                expanded = cropModeExpanded,
-                                onExpandedChange = { cropModeExpanded = it },
-                            ) {
-                                OutlinedTextField(
-                                    value = cropModeDisplay,
-                                    onValueChange = {},
-                                    label = { Text("Screenshot Mode") },
-                                    readOnly = true,
-                                    singleLine = true,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .menuAnchor(),
-                                    enabled = false,
-                                    colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
-                                        disabledTextColor = MaterialTheme.colorScheme.onSurface,
-                                        disabledBorderColor = MaterialTheme.colorScheme.outline,
-                                        disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    ),
-                                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = cropModeExpanded) },
-                                )
-
-                                ExposedDropdownMenu(
-                                    expanded = cropModeExpanded,
-                                    onDismissRequest = { cropModeExpanded = false },
-                                ) {
-                                    cropModeOptions.forEach { (value, label) ->
-                                        DropdownMenuItem(
-                                            text = { Text(label) },
-                                            onClick = {
-                                                updateProfile { copy(ankiCropMode = value) }
-                                                cropModeExpanded = false
-                                            },
+                                        OutlinedTextField(
+                                            value = newCustomFieldName,
+                                            onValueChange = { newCustomFieldName = it },
+                                            label = { Text("Add custom field") },
+                                            singleLine = true,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(top = 8.dp),
                                         )
+
+                                        TextButton(
+                                            onClick = {
+                                                val candidate = newCustomFieldName.trim()
+                                                val alreadyExists = (modelFields + customFieldNames)
+                                                    .any { it.equals(candidate, ignoreCase = true) }
+                                                if (candidate.isBlank() || alreadyExists) {
+                                                    return@TextButton
+                                                }
+                                                setFieldValue(candidate, "", true)
+                                                newCustomFieldName = ""
+                                            },
+                                            modifier = Modifier.align(Alignment.End),
+                                        ) {
+                                            Text("Add field")
+                                        }
                                     }
                                 }
                             }
-
-                            // Sync on create
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Text(
-                                    text = "Sync on card create",
-                                    style = MaterialTheme.typography.bodyLarge,
-                                )
-                                Switch(
-                                    checked = activeProfile.ankiSyncOnCreate,
-                                    onCheckedChange = { updateProfile { copy(ankiSyncOnCreate = it) } },
-                                )
-                            }
-                        }
-                    },
-                ),
-            ),
-        )
-    }
-
-    @Composable
-    private fun AnkiDropdownPreference(
-        label: String,
-        value: String,
-        options: List<String>,
-        displayOptions: List<String> = options,
-        onValueChange: (String) -> Unit,
-    ) {
-        var expanded by remember { mutableStateOf(false) }
-
-        Column(modifier = Modifier.fillMaxWidth()) {
-            OutlinedTextField(
-                value = value.ifBlank { "" },
-                onValueChange = {},
-                label = { Text(label) },
-                readOnly = true,
-                singleLine = true,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { expanded = true },
-                enabled = false,
-                colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
-                    disabledTextColor = MaterialTheme.colorScheme.onSurface,
-                    disabledBorderColor = MaterialTheme.colorScheme.outline,
-                    disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                ),
-            )
-            DropdownMenu(
-                expanded = expanded,
-                onDismissRequest = { expanded = false },
-                modifier = Modifier.fillMaxWidth(0.9f),
-            ) {
-                options.zip(displayOptions).forEach { (opt, display) ->
-                    DropdownMenuItem(
-                        text = { Text(display) },
-                        onClick = {
-                            onValueChange(opt)
-                            expanded = false
                         },
+                    ),
+                )
+
+                add(
+                    Preference.PreferenceItem.CustomPreference(
+                        title = "Other",
+                        content = { PreferenceGroupHeader(title = "Other") },
+                    ),
+                )
+
+                add(
+                    Preference.PreferenceItem.CustomPreference(
+                        title = stringResource(MR.strings.pref_anki_check_duplicates),
+                        content = {
+                            SwitchPreferenceWidget(
+                                title = stringResource(MR.strings.pref_anki_check_duplicates),
+                                checked = dupCheck,
+                                onCheckedChanged = { updateProfile { copy(ankiDupCheck = it) } },
+                            )
+                        },
+                    ),
+                )
+
+                if (dupCheck) {
+                    add(
+                        Preference.PreferenceItem.BasicListPreference(
+                            value = if (dupScope == "all") "all" else "deck",
+                            entries = dupScopeEntries,
+                            title = stringResource(MR.strings.pref_anki_duplicate_scope),
+                            onValueChanged = { updateProfile { copy(ankiDupScope = it) } },
+                        ),
+                    )
+                    add(
+                        Preference.PreferenceItem.BasicListPreference(
+                            value = when (dupAction) {
+                                "add", "overwrite" -> dupAction
+                                else -> "prevent"
+                            },
+                            entries = dupActionEntries,
+                            title = stringResource(MR.strings.pref_anki_duplicate_action),
+                            onValueChanged = { updateProfile { copy(ankiDupAction = it) } },
+                        ),
                     )
                 }
+
+                add(
+                    Preference.PreferenceItem.BasicListPreference(
+                        value = if (cropMode == "crop") "crop" else "full",
+                        entries = cropModeEntries,
+                        title = "Screenshot mode",
+                        onValueChanged = { updateProfile { copy(ankiCropMode = it) } },
+                    ),
+                )
+
+                add(
+                    Preference.PreferenceItem.CustomPreference(
+                        title = "Sync on card create",
+                        content = {
+                            SwitchPreferenceWidget(
+                                title = "Sync on card create",
+                                subtitle = "Trigger AnkiDroid sync after mining a card",
+                                checked = activeProfile.ankiSyncOnCreate,
+                                onCheckedChanged = { updateProfile { copy(ankiSyncOnCreate = it) } },
+                            )
+                        },
+                    ),
+                )
             }
-        }
+        }.toPersistentList()
+
+        @Suppress("UNCHECKED_CAST")
+        return Preference.PreferenceGroup(
+            title = stringResource(MR.strings.pref_anki),
+            preferenceItems = preferenceItems as kotlinx.collections.immutable.ImmutableList<
+                Preference.PreferenceItem<out Any, out Any>
+                >,
+        )
     }
 
     @OptIn(ExperimentalMaterial3Api::class)

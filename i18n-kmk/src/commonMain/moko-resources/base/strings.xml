@@ -245,11 +245,12 @@
     <string name="pref_dict_auto_kana_conversion_summary">Convert romaji to kana while typing (like Yomitan)</string>
     <string name="pref_dict_group_pitches">Group pitches</string>
     <string name="pref_dict_group_pitches_summary">Deduplicate and merge pitches across dictionaries</string>
-    <string name="pref_dictionary_summary">Per profile · import, order, enable</string>
-    <string name="pref_category_dictionary_popup">Dictionary Popup</string>
-    <string name="pref_dictionary_popup_summary">Global · layout, theme, OCR</string>
+    <string name="pref_dictionary_summary">Import, order, enable</string>
+    <string name="pref_category_dictionaries_and_audio">Dictionaries and audio</string>
+    <string name="pref_category_dictionary_popup">Popup dictionary</string>
+    <string name="pref_dictionary_popup_summary">Layout, theme, OCR</string>
     <string name="pref_category_anki">Anki</string>
-    <string name="pref_anki_settings_summary">Per profile · deck, fields, export</string>
+    <string name="pref_anki_settings_summary">Deck, fields, export</string>
     <string name="pref_settings_section_media">Media</string>
     <string name="pref_settings_section_learning">Learning</string>
     <string name="pref_settings_section_sync">Sync</string>

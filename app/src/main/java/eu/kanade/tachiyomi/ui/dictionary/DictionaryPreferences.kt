@@ -34,10 +34,26 @@ class DictionaryPreferences(
     fun showFrequencyHarmonic() = preferenceStore.getBoolean("pref_dict_show_frequency_harmonic", false)
     fun showFrequencyAverage() = preferenceStore.getBoolean("pref_dict_show_frequency_average", false)
 
+    /**
+     * Multi-select keys for frequency display modes (settings UI).
+     * Kept in sync with [showFrequencyHarmonic] / [showFrequencyAverage].
+     */
+    fun frequencyDisplayModes() = preferenceStore.getStringSet("pref_dict_frequency_display_modes", emptySet())
+
     fun groupTerms() = preferenceStore.getBoolean("pref_dict_group_terms", true)
     fun showPitchDiagram() = preferenceStore.getBoolean("pref_dict_show_pitch_diagram", true)
     fun showPitchNumber() = preferenceStore.getBoolean("pref_dict_show_pitch_number", true)
     fun showPitchText() = preferenceStore.getBoolean("pref_dict_show_pitch_text", true)
+
+    /**
+     * Multi-select keys for pitch accent display (settings UI).
+     * Kept in sync with [showPitchDiagram] / [showPitchNumber] / [showPitchText].
+     * Default matches historical boolean defaults (all on).
+     */
+    fun pitchDisplayModes() = preferenceStore.getStringSet(
+        "pref_dict_pitch_display_modes",
+        setOf(PITCH_DIAGRAM, PITCH_NUMBER, PITCH_TEXT),
+    )
     fun groupPitches() = preferenceStore.getBoolean("pref_dict_group_pitches", false)
     fun showNavigationButtons() = preferenceStore.getBoolean("pref_dict_show_navigation_buttons", true)
 
@@ -246,6 +262,14 @@ class DictionaryPreferences(
     fun autoUpdateInterval() = preferenceStore.getInt("pref_dict_auto_update_interval", 24)
     fun lastDictUpdateCheck() = preferenceStore.getLong("pref_last_dict_update_check", 0L)
     fun dictUpdateCheckState() = preferenceStore.getString("pref_dict_update_check_state", "idle")
+
+    companion object {
+        const val FREQ_HARMONIC = "harmonic"
+        const val FREQ_AVERAGE = "average"
+        const val PITCH_DIAGRAM = "diagram"
+        const val PITCH_NUMBER = "number"
+        const val PITCH_TEXT = "text"
+    }
 
     // -------------------------------------------------------------------------
     // Word Audio Preferences (Implementing WordAudioPreferences interface)
