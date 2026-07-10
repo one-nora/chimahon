@@ -343,7 +343,9 @@ object AnkiCardCreator {
                         }
 
                         if (audioData != null) {
-                            val ext = bestAudio.url.substringBefore('?').substringAfterLast('.', "mp3").lowercase()
+                            val ext = android.net.Uri.parse(bestAudio.url).lastPathSegment
+                                ?.substringAfterLast('.', "mp3")
+                                ?.lowercase() ?: "mp3"
                             val filename = "chimahon_audio_${result.term.expression}_${result.term.reading}_${System.currentTimeMillis()}.$ext"
                             wordAudioFilename = bridge.storeMedia(filename, audioData)
                             android.util.Log.d(TAG, "addToAnki: stored word audio media as $wordAudioFilename")

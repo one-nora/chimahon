@@ -26,6 +26,11 @@ class WordAudioService(
         coerceInputValues = true
     }
 
+    // Browser-like UA so endpoints such as Google's translate_tts accept the request
+    // (the app's default User-Agent is rejected with a 403).
+    private val browserUserAgent =
+        "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+
     private var cachedSources: List<WordAudioSource>? = null
     private var cachedSourcesRaw: String = ""
 
@@ -132,7 +137,10 @@ class WordAudioService(
             .replace("{term}", term)
             .replace("{reading}", reading)
 
-        val request = Request.Builder().url(url).build()
+        val request = Request.Builder()
+            .url(url)
+            .header("User-Agent", browserUserAgent)
+            .build()
 
         return try {
             network.client.newCall(request).execute().use { response ->
@@ -176,7 +184,10 @@ class WordAudioService(
     }
 
     suspend fun fetchRemoteAudioData(url: String): ByteArray? = withContext(Dispatchers.IO) {
-        val request = Request.Builder().url(url).build()
+        val request = Request.Builder()
+            .url(url)
+            .header("User-Agent", browserUserAgent)
+            .build()
         try {
             network.client.newCall(request).execute().use { response ->
                 if (response.isSuccessful) response.body?.bytes() else null
