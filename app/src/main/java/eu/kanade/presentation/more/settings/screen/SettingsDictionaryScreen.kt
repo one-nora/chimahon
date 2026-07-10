@@ -463,9 +463,9 @@ object SettingsDictionaryScreen : SearchableSettings {
         )
     }
 
-    /** Shared by [SettingsDictionaryPopupScreen] — appearance prefs only (global). */
+    /** Shared by [SettingsDictionaryPopupScreen] — global popup chrome prefs. */
     @Composable
-    fun popupPreferences(): List<Preference> = listOf(getAppearanceGroup())
+    fun popupPreferences(): List<Preference> = getAppearanceGroups()
 
     /** Shared by [SettingsAnkiScreen] — profiles + Anki mining prefs (per-profile). */
     @Composable
@@ -475,7 +475,7 @@ object SettingsDictionaryScreen : SearchableSettings {
     )
 
     @Composable
-    private fun getAppearanceGroup(): Preference.PreferenceGroup {
+    private fun getAppearanceGroups(): List<Preference> {
         val dictionaryPreferences = Injekt.get<DictionaryPreferences>()
 
         val widthPref = dictionaryPreferences.popupWidth()
@@ -502,570 +502,428 @@ object SettingsDictionaryScreen : SearchableSettings {
         val videoOcrAudioPaddingPref = dictionaryPreferences.videoOcrSentenceAudioPaddingSeconds()
         val videoOcrAudioPadding by videoOcrAudioPaddingPref.collectAsState()
 
-        val themeModePref = dictionaryPreferences.themeMode()
-        val themeMode by themeModePref.collectAsState()
-
         val navigator = LocalNavigator.currentOrThrow
-
-        val showFreqHarmonicPref = dictionaryPreferences.showFrequencyHarmonic()
-        val showFreqHarmonic by showFreqHarmonicPref.collectAsState()
-
-        val showFreqAveragePref = dictionaryPreferences.showFrequencyAverage()
-        val showFreqAverage by showFreqAveragePref.collectAsState()
-
-        val groupTermsPref = dictionaryPreferences.groupTerms()
-        val groupTerms by groupTermsPref.collectAsState()
-
         val customCssPref = dictionaryPreferences.customCss()
 
-        return Preference.PreferenceGroup(
-            title = stringResource(MR.strings.pref_dict_appearance),
-            preferenceItems = persistentListOf(
-                Preference.PreferenceItem.CustomPreference(
-                    title = stringResource(MR.strings.pref_dict_popup_size),
-                    content = {
-                        var selectedAxis by remember { mutableStateOf(PopupSizeAxis.WIDTH) }
-                        val selectedValue = when (selectedAxis) {
-                            PopupSizeAxis.WIDTH -> width
-                            PopupSizeAxis.HEIGHT -> height
-                        }
-                        val setSelectedValue: (Int) -> Unit = { value ->
-                            when (selectedAxis) {
-                                PopupSizeAxis.WIDTH -> widthPref.set(value)
-                                PopupSizeAxis.HEIGHT -> heightPref.set(value)
+        return listOf(
+            Preference.PreferenceGroup(
+                title = stringResource(KMR.strings.pref_dict_layout),
+                preferenceItems = persistentListOf(
+                    Preference.PreferenceItem.SliderPreference(
+                        value = width,
+                        title = stringResource(MR.strings.pref_dict_popup_width),
+                        subtitle = "${width}px",
+                        valueRange = 200..1920 step 10,
+                        steps = 171,
+                        onValueChanged = { widthPref.set(it) },
+                    ),
+                    Preference.PreferenceItem.SliderPreference(
+                        value = height,
+                        title = stringResource(MR.strings.pref_dict_popup_height),
+                        subtitle = "${height}px",
+                        valueRange = 100..1080 step 10,
+                        steps = 97,
+                        onValueChanged = { heightPref.set(it) },
+                    ),
+                    Preference.PreferenceItem.ListPreference(
+                        preference = dictionaryPreferences.popupMode(),
+                        entries = persistentListOf(
+                            "floating" to "Floating",
+                            "full_width" to "Full-width",
+                            "full_height" to "Full-height",
+                        ).associate { it.first to it.second }.toPersistentMap(),
+                        title = "Popup mode",
+                    ),
+                    Preference.PreferenceItem.SwitchPreference(
+                        preference = dictionaryPreferences.popupSwipeToDismiss(),
+                        title = stringResource(MR.strings.pref_dict_popup_swipe_to_dismiss),
+                    ),
+                    Preference.PreferenceItem.SliderPreference(
+                        value = popupSwipeThreshold,
+                        title = stringResource(MR.strings.pref_dict_popup_swipe_threshold),
+                        subtitle = "${popupSwipeThreshold}dp",
+                        valueRange = 20..100,
+                        steps = 79,
+                        onValueChanged = { popupSwipeThresholdPref.set(it) },
+                    ),
+                ),
+            ),
+            Preference.PreferenceGroup(
+                title = stringResource(KMR.strings.pref_dict_typography),
+                preferenceItems = persistentListOf(
+                    Preference.PreferenceItem.CustomPreference(
+                        title = "Font Family",
+                        content = {
+                            val context = LocalContext.current
+                            val scope = rememberCoroutineScope()
+                            var importedFonts by remember { mutableStateOf(FontManager.getImportedFonts(context)) }
+                            val allFonts = remember(importedFonts) { FontManager.defaultFonts + importedFonts }
+                            val fontFamilyPref = dictionaryPreferences.fontFamily()
+                            val selectedFont by fontFamilyPref.collectAsState()
+                            var isImporting by remember { mutableStateOf(false) }
+                            val fontPickerLauncher = rememberLauncherForActivityResult(
+                                contract = ActivityResultContracts.OpenDocument(),
+                            ) { uri: Uri? ->
+                                uri?.let {
+                                    isImporting = true
+                                    scope.launch {
+                                        val success = FontManager.importFont(context, it)
+                                        if (success) {
+                                            importedFonts = FontManager.getImportedFonts(context)
+                                        }
+                                        isImporting = false
+                                    }
+                                }
                             }
-                        }
-
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
                                 Text(
-                                    text = stringResource(MR.strings.pref_dict_popup_size),
+                                    text = "Font Family",
                                     style = MaterialTheme.typography.titleMedium,
-                                    modifier = Modifier.weight(1f),
                                 )
-                                IconButton(
-                                    onClick = {
-                                        widthPref.set(300)
-                                        heightPref.set(360)
-                                    },
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Outlined.Refresh,
-                                        contentDescription = "Reset popup size",
-                                    )
-                                }
-                            }
-                            Text(
-                                text = "W ${width}px  H ${height}px",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            SingleChoiceSegmentedButtonRow(
-                                modifier = Modifier.fillMaxWidth(),
-                            ) {
-                                PopupSizeAxis.entries.forEachIndexed { index, axis ->
-                                    SegmentedButton(
-                                        selected = selectedAxis == axis,
-                                        onClick = { selectedAxis = axis },
-                                        shape = SegmentedButtonDefaults.itemShape(index, PopupSizeAxis.entries.size),
-                                    ) {
-                                        Text(axis.label)
-                                    }
-                                }
-                            }
-                            Slider(
-                                value = selectedValue.toFloat(),
-                                onValueChange = { setSelectedValue(it.roundToInt()) },
-                                valueRange = (if (selectedAxis == PopupSizeAxis.WIDTH) 200f else 100f)..(if (selectedAxis == PopupSizeAxis.WIDTH) 1920f else 1080f),
-                                steps = (if (selectedAxis == PopupSizeAxis.WIDTH) 171 else 97),
-                            )
-                        }
-                    },
-                ),
-                Preference.PreferenceItem.CustomPreference(
-                    title = "Font Family",
-                    content = {
-                        val context = LocalContext.current
-                        val scope = rememberCoroutineScope()
-                        var importedFonts by remember { mutableStateOf(FontManager.getImportedFonts(context)) }
-                        val allFonts = remember(importedFonts) { FontManager.defaultFonts + importedFonts }
-
-                        val fontFamilyPref = dictionaryPreferences.fontFamily()
-                        val selectedFont by fontFamilyPref.collectAsState()
-
-                        var isImporting by remember { mutableStateOf(false) }
-                        val fontPickerLauncher = rememberLauncherForActivityResult(
-                            contract = ActivityResultContracts.OpenDocument()
-                        ) { uri: Uri? ->
-                            uri?.let {
-                                isImporting = true
-                                scope.launch {
-                                    val success = FontManager.importFont(context, it)
-                                    if (success) {
-                                        importedFonts = FontManager.getImportedFonts(context)
-                                    }
-                                    isImporting = false
-                                }
-                            }
-                        }
-
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Text(
-                                text = "Font Family",
-                                style = MaterialTheme.typography.titleMedium,
-                            )
-
-                            var fontExpanded by remember { mutableStateOf(false) }
-                            ExposedDropdownMenuBox(
-                                expanded = fontExpanded,
-                                onExpandedChange = { fontExpanded = it }
-                            ) {
-                                OutlinedTextField(
-                                    value = selectedFont.takeIf { it.isNotBlank() } ?: "Default",
-                                    onValueChange = {},
-                                    readOnly = true,
-                                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = fontExpanded) },
-                                    modifier = Modifier.menuAnchor().fillMaxWidth()
-                                )
-                                ExposedDropdownMenu(
+                                var fontExpanded by remember { mutableStateOf(false) }
+                                ExposedDropdownMenuBox(
                                     expanded = fontExpanded,
-                                    onDismissRequest = { fontExpanded = false }
+                                    onExpandedChange = { fontExpanded = it },
                                 ) {
-                                    DropdownMenuItem(
-                                        text = { Text("Default") },
-                                        onClick = {
-                                            fontFamilyPref.set("")
-                                            fontExpanded = false
-                                        }
+                                    OutlinedTextField(
+                                        value = selectedFont.takeIf { it.isNotBlank() } ?: "Default",
+                                        onValueChange = {},
+                                        readOnly = true,
+                                        trailingIcon = {
+                                            ExposedDropdownMenuDefaults.TrailingIcon(expanded = fontExpanded)
+                                        },
+                                        modifier = Modifier.menuAnchor().fillMaxWidth(),
                                     )
-                                    allFonts.forEach { font ->
+                                    ExposedDropdownMenu(
+                                        expanded = fontExpanded,
+                                        onDismissRequest = { fontExpanded = false },
+                                    ) {
                                         DropdownMenuItem(
-                                            text = { Text(font) },
+                                            text = { Text("Default") },
                                             onClick = {
-                                                fontFamilyPref.set(font)
+                                                fontFamilyPref.set("")
                                                 fontExpanded = false
-                                            }
+                                            },
                                         )
-                                    }
-                                }
-                            }
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                OutlinedButton(
-                                    onClick = {
-                                        fontPickerLauncher.launch(
-                                            arrayOf(
-                                                "application/font-ttf",
-                                                "application/x-font-ttf",
-                                                "font/ttf",
-                                                "application/x-font-otf",
-                                                "font/otf",
-                                                "application/octet-stream"
+                                        allFonts.forEach { font ->
+                                            DropdownMenuItem(
+                                                text = { Text(font) },
+                                                onClick = {
+                                                    fontFamilyPref.set(font)
+                                                    fontExpanded = false
+                                                },
                                             )
-                                        )
-                                    },
-                                    modifier = Modifier.weight(1f),
-                                    enabled = !isImporting
-                                ) {
-                                    if (isImporting) {
-                                        androidx.compose.material3.CircularProgressIndicator(
-                                            modifier = Modifier.size(16.dp),
-                                            strokeWidth = 2.dp
-                                        )
-                                    } else {
-                                        Text("Import Font")
+                                        }
                                     }
                                 }
-
-                                if (importedFonts.contains(selectedFont)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
                                     OutlinedButton(
                                         onClick = {
-                                            FontManager.deleteFont(context, selectedFont)
-                                            importedFonts = FontManager.getImportedFonts(context)
-                                            fontFamilyPref.set("")
+                                            fontPickerLauncher.launch(
+                                                arrayOf(
+                                                    "application/font-ttf",
+                                                    "application/x-font-ttf",
+                                                    "font/ttf",
+                                                    "application/x-font-otf",
+                                                    "font/otf",
+                                                    "application/octet-stream",
+                                                ),
+                                            )
                                         },
                                         modifier = Modifier.weight(1f),
-                                        colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
-                                            contentColor = MaterialTheme.colorScheme.error
-                                        )
+                                        enabled = !isImporting,
                                     ) {
-                                        Text("Delete Font")
+                                        if (isImporting) {
+                                            androidx.compose.material3.CircularProgressIndicator(
+                                                modifier = Modifier.size(16.dp),
+                                                strokeWidth = 2.dp,
+                                            )
+                                        } else {
+                                            Text("Import Font")
+                                        }
+                                    }
+                                    if (importedFonts.contains(selectedFont)) {
+                                        OutlinedButton(
+                                            onClick = {
+                                                FontManager.deleteFont(context, selectedFont)
+                                                importedFonts = FontManager.getImportedFonts(context)
+                                                fontFamilyPref.set("")
+                                            },
+                                            modifier = Modifier.weight(1f),
+                                            colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
+                                                contentColor = MaterialTheme.colorScheme.error,
+                                            ),
+                                        ) {
+                                            Text("Delete Font")
+                                        }
                                     }
                                 }
                             }
-                        }
-                    }
-                ),
-                Preference.PreferenceItem.SliderPreference(
-                    value = fontSize,
-                    title = stringResource(MR.strings.pref_dict_popup_font_size),
-                    subtitle = "${fontSize}px",
-                    valueRange = 8..48,
-                    steps = 40,
-                    onValueChanged = { newValue ->
-                        fontSizePref.set(newValue)
-                    },
-                ),
-                Preference.PreferenceItem.CustomPreference(
-                    title = stringResource(MR.strings.pref_dict_ocr_box_scale),
-                    content = {
-                        var selectedAxis by remember { mutableStateOf(OcrScaleAxis.X) }
-                        val selectedValue = when (selectedAxis) {
-                            OcrScaleAxis.X -> ocrBoxScaleX
-                            OcrScaleAxis.Y -> ocrBoxScaleY
-                        }
-                        val setSelectedValue: (Float) -> Unit = { value ->
-                            val rounded = ((value * 10f).roundToInt() / 10f).coerceIn(0.5f, 3.0f)
-                            when (selectedAxis) {
-                                OcrScaleAxis.X -> ocrBoxScaleXPref.set(rounded)
-                                OcrScaleAxis.Y -> ocrBoxScaleYPref.set(rounded)
-                            }
-                        }
-
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Text(
-                                    text = stringResource(MR.strings.pref_dict_ocr_box_scale),
-                                    style = MaterialTheme.typography.titleMedium,
-                                    modifier = Modifier.weight(1f),
-                                )
-                                IconButton(
-                                    onClick = {
-                                        ocrBoxScaleXPref.set(1.0f)
-                                        ocrBoxScaleYPref.set(1.0f)
-                                    },
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Outlined.Refresh,
-                                        contentDescription = "Reset OCR box scale",
-                                    )
-                                }
-                            }
-                            Text(
-                                text = "X ${String.format("%.1fx", ocrBoxScaleX)}  Y ${String.format("%.1fx", ocrBoxScaleY)}",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            SingleChoiceSegmentedButtonRow(
-                                modifier = Modifier.fillMaxWidth(),
-                            ) {
-                                OcrScaleAxis.entries.forEachIndexed { index, axis ->
-                                    SegmentedButton(
-                                        selected = selectedAxis == axis,
-                                        onClick = { selectedAxis = axis },
-                                        shape = SegmentedButtonDefaults.itemShape(index, OcrScaleAxis.entries.size),
-                                    ) {
-                                        Text(axis.label)
-                                    }
-                                }
-                            }
-                            Slider(
-                                value = selectedValue.coerceIn(0.5f, 3.0f),
-                                onValueChange = setSelectedValue,
-                                valueRange = 0.5f..3.0f,
-                                steps = 24,
-                            )
-                        }
-                    },
-                ),
-                Preference.PreferenceItem.SliderPreference(
-                    value = (ocrBoxOpacity * 100).toInt(),
-                    title = stringResource(MR.strings.pref_dict_ocr_box_opacity),
-                    subtitle = "${(ocrBoxOpacity * 100).toInt()}%",
-                    valueRange = 0..100 step 5,
-                    steps = 19,
-                    onValueChanged = { newValue ->
-                        ocrBoxOpacityPref.set(newValue / 100f)
-                    },
-                ),
-                Preference.PreferenceItem.ListPreference(
-                    preference = dictionaryPreferences.ocrEngine(),
-                    entries = persistentListOf(
-                        "cloud" to "Cloud (Google Lens)",
-                        *if (eu.kanade.tachiyomi.BuildConfig.HAS_LOCAL_OCR) {
-                            arrayOf("local" to "Local (On-Device)")
-                        } else {
-                            emptyArray()
                         },
-                    ).associate { it.first to it.second }.toPersistentMap(),
-                    title = "OCR Engine",
-                    onValueChanged = { value ->
-                        if (value == "local") {
-                            Injekt.get<ModelDownloader>().triggerDownload()
-                        }
-                        true
-                    },
+                    ),
+                    Preference.PreferenceItem.SliderPreference(
+                        value = fontSize,
+                        title = stringResource(MR.strings.pref_dict_popup_font_size),
+                        subtitle = "${fontSize}px",
+                        valueRange = 8..48,
+                        steps = 40,
+                        onValueChanged = { fontSizePref.set(it) },
+                    ),
                 ),
-                Preference.PreferenceItem.SliderPreference(
-                    value = videoOcrAudioPadding,
-                    title = "Video OCR sentence audio padding",
-                    subtitle = "${videoOcrAudioPadding}s before and after the current video time",
-                    valueRange = 1..15,
-                    steps = 13,
-                    onValueChanged = { newValue ->
-                        videoOcrAudioPaddingPref.set(newValue)
-                    },
-                ),
-                Preference.PreferenceItem.TextPreference(
-                    title = stringResource(KMR.strings.pref_custom_color),
-                    subtitle = stringResource(KMR.strings.custom_color_description),
-                    enabled = true,
-                    onClick = {
-                        navigator.push(AppCustomThemeColorPickerScreen(isDictionary = true))
-                    },
-                ),
-                Preference.PreferenceItem.CustomPreference(
-                    title = "Dictionary theme",
-                    content = {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 8.dp),
-                        ) {
-                            Text(
-                                text = "Dictionary theme",
-                                style = MaterialTheme.typography.titleMedium,
+            ),
+            Preference.PreferenceGroup(
+                title = stringResource(MR.strings.pref_category_theme),
+                preferenceItems = persistentListOf(
+                    Preference.PreferenceItem.TextPreference(
+                        title = stringResource(KMR.strings.pref_custom_color),
+                        subtitle = stringResource(KMR.strings.custom_color_description),
+                        onClick = {
+                            navigator.push(AppCustomThemeColorPickerScreen(isDictionary = true))
+                        },
+                    ),
+                    Preference.PreferenceItem.ListPreference(
+                        preference = dictionaryPreferences.themeMode(),
+                        entries = persistentListOf(
+                            "system" to stringResource(MR.strings.theme_system),
+                            "light" to stringResource(MR.strings.theme_light),
+                            "dark" to stringResource(MR.strings.theme_dark),
+                            "pure_black" to stringResource(MR.strings.pref_dict_theme_pure_black),
+                        ).associate { it.first to it.second }.toPersistentMap(),
+                        title = stringResource(KMR.strings.pref_dict_theme),
+                    ),
+                    Preference.PreferenceItem.SwitchPreference(
+                        preference = dictionaryPreferences.eInkMode(),
+                        title = "E-Ink mode",
+                        subtitle = "Removes animations, shadows, and rounded corners for better readability on e-ink displays",
+                    ),
+                    Preference.PreferenceItem.SwitchPreference(
+                        preference = dictionaryPreferences.paginatedScrolling(),
+                        title = "Paginated scrolling",
+                        subtitle = "Scroll by page-sized steps instead of smooth scrolling",
+                    ),
+                    Preference.PreferenceItem.CustomPreference(
+                        title = stringResource(MR.strings.pref_dict_custom_css),
+                        content = {
+                            var isDialogShown by remember { mutableStateOf(false) }
+                            val css by customCssPref.collectAsState()
+                            TextPreferenceWidget(
+                                title = stringResource(MR.strings.pref_dict_custom_css),
+                                subtitle = stringResource(MR.strings.pref_dict_custom_css_summary),
+                                onPreferenceClick = { isDialogShown = true },
                             )
-                            Row(
+                            if (isDialogShown) {
+                                var text by remember { mutableStateOf(css) }
+                                AlertDialog(
+                                    onDismissRequest = { isDialogShown = false },
+                                    title = { Text(stringResource(MR.strings.pref_dict_custom_css)) },
+                                    text = {
+                                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            Text(
+                                                text = stringResource(MR.strings.pref_dict_custom_css_summary),
+                                                style = MaterialTheme.typography.bodySmall,
+                                            )
+                                            OutlinedTextField(
+                                                value = text,
+                                                onValueChange = { text = it },
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .height(400.dp),
+                                                placeholder = { Text("Paste your CSS here...") },
+                                                singleLine = false,
+                                            )
+                                        }
+                                    },
+                                    confirmButton = {
+                                        TextButton(
+                                            onClick = {
+                                                customCssPref.set(text)
+                                                isDialogShown = false
+                                            },
+                                        ) {
+                                            Text(stringResource(MR.strings.action_ok))
+                                        }
+                                    },
+                                    dismissButton = {
+                                        TextButton(onClick = { isDialogShown = false }) {
+                                            Text(stringResource(MR.strings.action_cancel))
+                                        }
+                                    },
+                                )
+                            }
+                        },
+                    ),
+                ),
+            ),
+            Preference.PreferenceGroup(
+                title = stringResource(KMR.strings.pref_dict_content),
+                preferenceItems = persistentListOf(
+                    Preference.PreferenceItem.SwitchPreference(
+                        preference = dictionaryPreferences.showFrequencyHarmonic(),
+                        title = stringResource(MR.strings.pref_dict_show_frequency_harmonic),
+                        subtitle = stringResource(MR.strings.pref_dict_show_frequency_harmonic_summary),
+                    ),
+                    Preference.PreferenceItem.SwitchPreference(
+                        preference = dictionaryPreferences.showFrequencyAverage(),
+                        title = stringResource(MR.strings.pref_dict_show_frequency_average),
+                    ),
+                    Preference.PreferenceItem.SwitchPreference(
+                        preference = dictionaryPreferences.groupPitches(),
+                        title = stringResource(KMR.strings.pref_dict_group_pitches),
+                        subtitle = stringResource(KMR.strings.pref_dict_group_pitches_summary),
+                    ),
+                    Preference.PreferenceItem.SwitchPreference(
+                        preference = dictionaryPreferences.groupTerms(),
+                        title = stringResource(MR.strings.pref_dict_group_terms),
+                        subtitle = stringResource(MR.strings.pref_dict_group_terms_summary),
+                    ),
+                    Preference.PreferenceItem.SwitchPreference(
+                        preference = dictionaryPreferences.showNavigationButtons(),
+                        title = stringResource(KMR.strings.pref_dict_show_navigation_buttons),
+                        subtitle = stringResource(KMR.strings.pref_dict_show_navigation_buttons_summary),
+                    ),
+                    Preference.PreferenceItem.ListPreference(
+                        preference = dictionaryPreferences.recursiveLookupMode(),
+                        entries = persistentListOf(
+                            "tabs" to stringResource(MR.strings.pref_dict_recursive_mode_tabs),
+                            "stack" to stringResource(MR.strings.pref_dict_recursive_mode_back),
+                            "popup" to stringResource(MR.strings.pref_dict_recursive_mode_popup),
+                        ).associate { it.first to it.second }.toPersistentMap(),
+                        title = stringResource(MR.strings.pref_dict_recursive_mode),
+                    ),
+                    Preference.PreferenceItem.SwitchPreference(
+                        preference = dictionaryPreferences.showPitchDiagram(),
+                        title = stringResource(MR.strings.pref_dict_pitch_diagram),
+                    ),
+                    Preference.PreferenceItem.SwitchPreference(
+                        preference = dictionaryPreferences.showPitchNumber(),
+                        title = stringResource(MR.strings.pref_dict_pitch_number),
+                    ),
+                    Preference.PreferenceItem.SwitchPreference(
+                        preference = dictionaryPreferences.showPitchText(),
+                        title = stringResource(MR.strings.pref_dict_pitch_text),
+                    ),
+                    Preference.PreferenceItem.SwitchPreference(
+                        preference = dictionaryPreferences.autoKanaConversion(),
+                        title = stringResource(KMR.strings.pref_dict_auto_kana_conversion),
+                        subtitle = stringResource(KMR.strings.pref_dict_auto_kana_conversion_summary),
+                    ),
+                ),
+            ),
+            Preference.PreferenceGroup(
+                title = stringResource(MR.strings.pref_category_ocr),
+                preferenceItems = persistentListOf(
+                    Preference.PreferenceItem.CustomPreference(
+                        title = stringResource(MR.strings.pref_dict_ocr_box_scale),
+                        content = {
+                            var selectedAxis by remember { mutableStateOf(OcrScaleAxis.X) }
+                            val selectedValue = when (selectedAxis) {
+                                OcrScaleAxis.X -> ocrBoxScaleX
+                                OcrScaleAxis.Y -> ocrBoxScaleY
+                            }
+                            val setSelectedValue: (Float) -> Unit = { value ->
+                                val rounded = ((value * 10f).roundToInt() / 10f).coerceIn(0.5f, 3.0f)
+                                when (selectedAxis) {
+                                    OcrScaleAxis.X -> ocrBoxScaleXPref.set(rounded)
+                                    OcrScaleAxis.Y -> ocrBoxScaleYPref.set(rounded)
+                                }
+                            }
+                            Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(top = 8.dp),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
-                                val chips = listOf(
-                                    "system" to stringResource(MR.strings.theme_system),
-                                    "light" to stringResource(MR.strings.theme_light),
-                                    "dark" to stringResource(MR.strings.theme_dark),
-                                    "pure_black" to stringResource(MR.strings.pref_dict_theme_pure_black),
-                                )
-                                chips.forEach { (value, label) ->
-                                    FilterChip(
-                                        selected = themeMode == value,
-                                        onClick = { themeModePref.set(value) },
-                                        label = { Text(label) },
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(
+                                        text = stringResource(MR.strings.pref_dict_ocr_box_scale),
+                                        style = MaterialTheme.typography.titleMedium,
+                                        modifier = Modifier.weight(1f),
                                     )
-                                }
-                            }
-                        }
-                    },
-                ),
-                Preference.PreferenceItem.SwitchPreference(
-                    preference = dictionaryPreferences.eInkMode(),
-                    title = "E-Ink mode",
-                    subtitle = "Removes animations, shadows, and rounded corners for better readability on e-ink displays",
-                ),
-                Preference.PreferenceItem.SwitchPreference(
-                    preference = dictionaryPreferences.paginatedScrolling(),
-                    title = "Paginated scrolling",
-                    subtitle = "Scroll by page-sized steps instead of smooth scrolling",
-                ),
-                Preference.PreferenceItem.CustomPreference(
-                    title = stringResource(MR.strings.pref_dict_frequency_display),
-                    content = {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            Text(
-                                text = stringResource(MR.strings.pref_dict_frequency_display),
-                                style = MaterialTheme.typography.titleMedium,
-                            )
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            ) {
-                                FilterChip(
-                                    selected = showFreqHarmonic,
-                                    onClick = { showFreqHarmonicPref.set(!showFreqHarmonic) },
-                                    label = { Text("Harmonic rank") },
-                                    modifier = Modifier.weight(1f),
-                                )
-                                FilterChip(
-                                    selected = showFreqAverage,
-                                    onClick = { showFreqAveragePref.set(!showFreqAverage) },
-                                    label = { Text(stringResource(MR.strings.pref_dict_show_frequency_average)) },
-                                    modifier = Modifier.weight(1f),
-                                )
-                            }
-                        }
-                    },
-                ),
-                Preference.PreferenceItem.SwitchPreference(
-                    preference = dictionaryPreferences.groupPitches(),
-                    title = stringResource(KMR.strings.pref_dict_group_pitches),
-                    subtitle = stringResource(KMR.strings.pref_dict_group_pitches_summary),
-                ),
-                Preference.PreferenceItem.SwitchPreference(
-                    preference = groupTermsPref,
-                    title = stringResource(MR.strings.pref_dict_group_terms),
-                    subtitle = stringResource(MR.strings.pref_dict_group_terms_summary),
-                ),
-                Preference.PreferenceItem.SwitchPreference(
-                    preference = dictionaryPreferences.showNavigationButtons(),
-                    title = stringResource(KMR.strings.pref_dict_show_navigation_buttons),
-                    subtitle = stringResource(KMR.strings.pref_dict_show_navigation_buttons_summary),
-                ),
-                Preference.PreferenceItem.ListPreference(
-                    preference = dictionaryPreferences.popupMode(),
-                    entries = persistentListOf(
-                        "floating" to "Floating",
-                        "full_width" to "Full-width",
-                        "full_height" to "Full-height",
-                    ).associate { it.first to it.second }.toPersistentMap(),
-                    title = "Popup mode",
-                ),
-                Preference.PreferenceItem.CustomPreference(
-                    title = stringResource(MR.strings.pref_dict_custom_css),
-                    content = {
-                        var isDialogShown by remember { mutableStateOf(false) }
-                        val css by customCssPref.collectAsState()
-
-                        TextPreferenceWidget(
-                            title = stringResource(MR.strings.pref_dict_custom_css),
-                            subtitle = stringResource(MR.strings.pref_dict_custom_css_summary),
-                            onPreferenceClick = { isDialogShown = true },
-                        )
-
-                        if (isDialogShown) {
-                            var text by remember { mutableStateOf(css) }
-                            AlertDialog(
-                                onDismissRequest = { isDialogShown = false },
-                                title = { Text(stringResource(MR.strings.pref_dict_custom_css)) },
-                                text = {
-                                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        Text(
-                                            text = stringResource(MR.strings.pref_dict_custom_css_summary),
-                                            style = MaterialTheme.typography.bodySmall,
-                                        )
-                                        OutlinedTextField(
-                                            value = text,
-                                            onValueChange = { text = it },
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .height(400.dp),
-                                            placeholder = { Text("Paste your CSS here...") },
-                                            singleLine = false,
-                                        )
-                                    }
-                                },
-                                confirmButton = {
-                                    TextButton(
+                                    IconButton(
                                         onClick = {
-                                            customCssPref.set(text)
-                                            isDialogShown = false
+                                            ocrBoxScaleXPref.set(1.0f)
+                                            ocrBoxScaleYPref.set(1.0f)
                                         },
                                     ) {
-                                        Text(stringResource(MR.strings.action_ok))
+                                        Icon(
+                                            imageVector = Icons.Outlined.Refresh,
+                                            contentDescription = "Reset OCR box scale",
+                                        )
                                     }
-                                },
-                                dismissButton = {
-                                    TextButton(onClick = { isDialogShown = false }) {
-                                        Text(stringResource(MR.strings.action_cancel))
+                                }
+                                Text(
+                                    text = "X ${String.format("%.1fx", ocrBoxScaleX)}  Y ${String.format("%.1fx", ocrBoxScaleY)}",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                                    OcrScaleAxis.entries.forEachIndexed { index, axis ->
+                                        SegmentedButton(
+                                            selected = selectedAxis == axis,
+                                            onClick = { selectedAxis = axis },
+                                            shape = SegmentedButtonDefaults.itemShape(
+                                                index,
+                                                OcrScaleAxis.entries.size,
+                                            ),
+                                        ) {
+                                            Text(axis.label)
+                                        }
                                     }
-                                },
-                            )
-                        }
-                    },
-                ),
-                Preference.PreferenceItem.ListPreference(
-                    preference = dictionaryPreferences.recursiveLookupMode(),
-                    entries = persistentListOf(
-                        "tabs" to stringResource(MR.strings.pref_dict_recursive_mode_tabs),
-                        "stack" to stringResource(MR.strings.pref_dict_recursive_mode_back),
-                        "popup" to stringResource(MR.strings.pref_dict_recursive_mode_popup),
-                    ).associate { it.first to it.second }.toPersistentMap(),
-                    title = stringResource(MR.strings.pref_dict_recursive_mode),
-                ),
-                Preference.PreferenceItem.SwitchPreference(
-                    preference = dictionaryPreferences.popupSwipeToDismiss(),
-                    title = stringResource(MR.strings.pref_dict_popup_swipe_to_dismiss),
-                ),
-                Preference.PreferenceItem.SliderPreference(
-                    value = popupSwipeThreshold,
-                    title = stringResource(MR.strings.pref_dict_popup_swipe_threshold),
-                    subtitle = "${popupSwipeThreshold}dp",
-                    valueRange = 20..100,
-                    steps = 79,
-                    onValueChanged = { newValue ->
-                        popupSwipeThresholdPref.set(newValue)
-                    },
-                ),
-                Preference.PreferenceItem.CustomPreference(
-                    title = stringResource(MR.strings.pref_dict_pitch_accent_display),
-                    content = {
-                        val showPitchDiagramPref = dictionaryPreferences.showPitchDiagram()
-                        val showPitchDiagram by showPitchDiagramPref.collectAsState()
-
-                        val showPitchNumberPref = dictionaryPreferences.showPitchNumber()
-                        val showPitchNumber by showPitchNumberPref.collectAsState()
-
-                        val showPitchTextPref = dictionaryPreferences.showPitchText()
-                        val showPitchText by showPitchTextPref.collectAsState()
-
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 8.dp),
-                        ) {
-                            Text(
-                                text = stringResource(MR.strings.pref_dict_pitch_accent_display),
-                                style = MaterialTheme.typography.titleMedium,
-                            )
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(top = 8.dp),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            ) {
-                                FilterChip(
-                                    selected = showPitchDiagram,
-                                    onClick = { showPitchDiagramPref.set(!showPitchDiagram) },
-                                    label = { Text(stringResource(MR.strings.pref_dict_pitch_diagram)) },
-                                )
-                                FilterChip(
-                                    selected = showPitchNumber,
-                                    onClick = { showPitchNumberPref.set(!showPitchNumber) },
-                                    label = { Text(stringResource(MR.strings.pref_dict_pitch_number)) },
-                                )
-                                FilterChip(
-                                    selected = showPitchText,
-                                    onClick = { showPitchTextPref.set(!showPitchText) },
-                                    label = { Text(stringResource(MR.strings.pref_dict_pitch_text)) },
+                                }
+                                Slider(
+                                    value = selectedValue.coerceIn(0.5f, 3.0f),
+                                    onValueChange = setSelectedValue,
+                                    valueRange = 0.5f..3.0f,
+                                    steps = 24,
                                 )
                             }
-                        }
-                    },
-                ),
-                Preference.PreferenceItem.SwitchPreference(
-                    preference = dictionaryPreferences.autoKanaConversion(),
-                    title = stringResource(KMR.strings.pref_dict_auto_kana_conversion),
-                    subtitle = stringResource(KMR.strings.pref_dict_auto_kana_conversion_summary),
+                        },
+                    ),
+                    Preference.PreferenceItem.SliderPreference(
+                        value = (ocrBoxOpacity * 100).toInt(),
+                        title = stringResource(MR.strings.pref_dict_ocr_box_opacity),
+                        subtitle = "${(ocrBoxOpacity * 100).toInt()}%",
+                        valueRange = 0..100 step 5,
+                        steps = 19,
+                        onValueChanged = { ocrBoxOpacityPref.set(it / 100f) },
+                    ),
+                    Preference.PreferenceItem.ListPreference(
+                        preference = dictionaryPreferences.ocrEngine(),
+                        entries = persistentListOf(
+                            "cloud" to "Cloud (Google Lens)",
+                            *if (eu.kanade.tachiyomi.BuildConfig.HAS_LOCAL_OCR) {
+                                arrayOf("local" to "Local (On-Device)")
+                            } else {
+                                emptyArray()
+                            },
+                        ).associate { it.first to it.second }.toPersistentMap(),
+                        title = "OCR Engine",
+                        onValueChanged = { value ->
+                            if (value == "local") {
+                                Injekt.get<ModelDownloader>().triggerDownload()
+                            }
+                            true
+                        },
+                    ),
+                    Preference.PreferenceItem.SliderPreference(
+                        value = videoOcrAudioPadding,
+                        title = "Video OCR sentence audio padding",
+                        subtitle = "${videoOcrAudioPadding}s before and after the current video time",
+                        valueRange = 1..15,
+                        steps = 13,
+                        onValueChanged = { videoOcrAudioPaddingPref.set(it) },
+                    ),
                 ),
             ),
         )
@@ -1160,98 +1018,62 @@ object SettingsDictionaryScreen : SearchableSettings {
             )
         }
 
+        val languages = persistentListOf(
+            "" to "Any (All)",
+            "ja" to "Japanese",
+            "ko" to "Korean",
+            "ar" to "Arabic",
+            "zh" to "Chinese",
+            "en" to "English",
+            "de" to "German",
+            "fr" to "French",
+            "ru" to "Russian",
+            "es" to "Spanish",
+            "it" to "Italian",
+        ).associate { it.first to it.second }.toPersistentMap()
+
         return Preference.PreferenceGroup(
             title = stringResource(MR.strings.pref_anki_profiles),
             preferenceItems = persistentListOf(
-                Preference.PreferenceItem.CustomPreference(
-                    title = stringResource(MR.strings.pref_anki_profiles),
-                    content = {
-                        Column(
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                                Text(
-                                    text = stringResource(MR.strings.pref_anki_profile_active, activeProfile.name),
-                                    style = MaterialTheme.typography.titleMedium,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                IconButton(onClick = { showRenameDialog = activeProfile }) {
-                                    Icon(imageVector = Icons.Outlined.Edit, contentDescription = "Rename")
-                                }
-                                IconButton(
-                                    onClick = { showDeleteDialog = activeProfile },
-                                    enabled = profiles.size > 1
-                                ) {
-                                    Icon(imageVector = Icons.Outlined.Delete, contentDescription = "Delete")
-                                }
-                            }
-                            androidx.compose.foundation.lazy.LazyRow(
-                                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                profiles.forEach { profile ->
-                                    item {
-                                        androidx.compose.material3.FilterChip(
-                                            selected = profile.id == activeProfile.id,
-                                            onClick = { profileStore.setActiveProfile(profile.id) },
-                                            label = { Text(profile.name) },
-                                        )
-                                    }
-                                }
-                                item {
-                                    androidx.compose.material3.FilterChip(
-                                        selected = false,
-                                        onClick = { showNewDialog = true },
-                                        label = { Text("+") },
-                                    )
-                                }
-                            }
-
-                            // Language selector
-                            var langExpanded by remember { mutableStateOf(false) }
-                            val languages = listOf(
-                                "" to "Any (All)",
-                                "ja" to "Japanese",
-                                "ko" to "Korean",
-                                "ar" to "Arabic",
-                                "zh" to "Chinese",
-                                "en" to "English",
-                                "de" to "German",
-                                "fr" to "French",
-                                "ru" to "Russian",
-                                "es" to "Spanish",
-                                "it" to "Italian",
-                            )
-                            val currentLangName = languages.find { it.first == activeProfile.languageCode }?.second ?: activeProfile.languageCode
-
-                            Box(modifier = Modifier.padding(top = 8.dp)) {
-                                OutlinedButton(
-                                    onClick = { langExpanded = true },
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Text("Language: $currentLangName")
-                                    Icon(Icons.Outlined.KeyboardArrowDown, null)
-                                }
-                                DropdownMenu(
-                                    expanded = langExpanded,
-                                    onDismissRequest = { langExpanded = false }
-                                ) {
-                                    languages.forEach { (code, name) ->
-                                        DropdownMenuItem(
-                                            text = { Text(name) },
-                                            onClick = {
-                                                profileStore.updateProfile(profileStore.getActiveProfile().copy(languageCode = code))
-                                                langExpanded = false
-                                            }
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                )
-            )
+                Preference.PreferenceItem.BasicListPreference(
+                    value = activeProfile.id,
+                    entries = profiles.associate { it.id to it.name }.toPersistentMap(),
+                    title = stringResource(KMR.strings.pref_dict_active_profile),
+                    onValueChanged = { id ->
+                        profileStore.setActiveProfile(id)
+                    },
+                ),
+                Preference.PreferenceItem.BasicListPreference(
+                    value = activeProfile.languageCode,
+                    entries = languages,
+                    title = stringResource(KMR.strings.pref_dict_profile_language),
+                    onValueChanged = { code ->
+                        profileStore.updateProfile(
+                            profileStore.getActiveProfile().copy(languageCode = code),
+                        )
+                    },
+                ),
+                Preference.PreferenceItem.TextPreference(
+                    title = stringResource(MR.strings.pref_anki_profile_new),
+                    subtitle = stringResource(MR.strings.pref_anki_profile_clone),
+                    onClick = { showNewDialog = true },
+                ),
+                Preference.PreferenceItem.TextPreference(
+                    title = stringResource(MR.strings.pref_anki_profile_rename),
+                    subtitle = activeProfile.name,
+                    onClick = { showRenameDialog = activeProfile },
+                ),
+                Preference.PreferenceItem.TextPreference(
+                    title = stringResource(MR.strings.pref_anki_profile_delete),
+                    subtitle = if (profiles.size > 1) {
+                        stringResource(MR.strings.pref_anki_profile_delete_confirm, activeProfile.name)
+                    } else {
+                        stringResource(MR.strings.pref_anki_profile_cannot_delete_last)
+                    },
+                    enabled = profiles.size > 1,
+                    onClick = { showDeleteDialog = activeProfile },
+                ),
+            ),
         )
     }
 
