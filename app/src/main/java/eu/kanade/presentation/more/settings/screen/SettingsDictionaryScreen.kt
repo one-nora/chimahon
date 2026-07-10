@@ -8,7 +8,6 @@ import android.os.Environment
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -17,32 +16,29 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
-import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.DragHandle
-import androidx.compose.material.icons.outlined.KeyboardArrowDown
-import androidx.compose.material.icons.outlined.CloudDownload
-import androidx.compose.material.icons.outlined.Sync
-import androidx.compose.material.icons.outlined.Visibility
-import androidx.compose.material.icons.outlined.VisibilityOff
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.ImportExport
+import androidx.compose.material.icons.outlined.KeyboardArrowDown
 import androidx.compose.material.icons.outlined.KeyboardArrowRight
+import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
@@ -55,6 +51,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
@@ -80,14 +77,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import chimahon.HoshiDicts
-import chimahon.dictionary.readDictionaryIndex
-import com.canopus.chimareader.data.FontManager
-import com.hippo.unifile.UniFile
 import chimahon.anki.AnkiCardCreator
 import chimahon.anki.AnkiDroidBridge
 import chimahon.anki.AnkiProfile
 import chimahon.anki.LapisPreset
 import chimahon.anki.Marker
+import chimahon.dictionary.readDictionaryIndex
+import com.canopus.chimareader.data.FontManager
+import com.hippo.unifile.UniFile
 import eu.kanade.presentation.more.settings.Preference
 import eu.kanade.tachiyomi.data.dictionary.DictionaryUpdateJob
 import eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences
@@ -105,8 +102,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -455,11 +450,69 @@ object SettingsDictionaryScreen : SearchableSettings {
             )
         }
 
-        // Dictionary tab: profiles + imported dicts + word audio (popup/Anki live on sibling screens)
+        // Dictionary tab: profiles + imported dicts + updates + word audio
         return listOf(
             getAnkiProfileGroup(),
             getDictionaryListGroup(importLauncher),
+            getDictionaryUpdatesGroup(),
             getWordAudioGroup(pickDb),
+        )
+    }
+
+    @Composable
+    private fun getDictionaryUpdatesGroup(): Preference.PreferenceGroup {
+        val context = LocalContext.current
+        val dictionaryPreferences = remember { Injekt.get<DictionaryPreferences>() }
+        val autoUpdateEnabled by dictionaryPreferences.autoUpdateEnabled().collectAsState()
+        val autoUpdateInterval by dictionaryPreferences.autoUpdateInterval().collectAsState()
+        val lastCheckMs by dictionaryPreferences.lastDictUpdateCheck().collectAsState()
+
+        // 0 = disabled; otherwise hours (same keys as before for backup/upgrade safety)
+        val intervalEntries = persistentListOf(
+            0 to stringResource(MR.strings.update_never),
+            1 to stringResource(MR.strings.update_1hour),
+            6 to stringResource(MR.strings.update_6hour),
+            12 to stringResource(MR.strings.update_12hour),
+            24 to stringResource(MR.strings.update_24hour),
+            48 to stringResource(MR.strings.update_48hour),
+            72 to stringResource(MR.strings.update_72hour),
+            168 to stringResource(MR.strings.update_weekly),
+        ).associate { it.first.toString() to it.second }.toPersistentMap()
+
+        val currentKey = if (autoUpdateEnabled) autoUpdateInterval.toString() else "0"
+        val lastCheckedSubtitle = if (lastCheckMs > 0L) {
+            val sdf = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault())
+            "Last checked: ${sdf.format(java.util.Date(lastCheckMs))}"
+        } else {
+            "Not checked yet"
+        }
+
+        return Preference.PreferenceGroup(
+            title = "Updates",
+            preferenceItems = persistentListOf(
+                Preference.PreferenceItem.BasicListPreference(
+                    value = currentKey,
+                    entries = intervalEntries,
+                    title = "Auto-update dictionaries",
+                    subtitle = "%s",
+                    onValueChanged = { key ->
+                        val hours = key.toIntOrNull() ?: 0
+                        if (hours <= 0) {
+                            dictionaryPreferences.autoUpdateEnabled().set(false)
+                            DictionaryUpdateJob.setupTask(context, false)
+                        } else {
+                            dictionaryPreferences.autoUpdateEnabled().set(true)
+                            dictionaryPreferences.autoUpdateInterval().set(hours)
+                            DictionaryUpdateJob.setupTask(context, true, hours)
+                        }
+                    },
+                ),
+                Preference.PreferenceItem.TextPreference(
+                    title = stringResource(MR.strings.check_for_updates),
+                    subtitle = lastCheckedSubtitle,
+                    onClick = { DictionaryUpdateJob.checkNow(context) },
+                ),
+            ),
         )
     }
 
@@ -504,6 +557,9 @@ object SettingsDictionaryScreen : SearchableSettings {
 
         val navigator = LocalNavigator.currentOrThrow
         val customCssPref = dictionaryPreferences.customCss()
+
+        val themeModePref = dictionaryPreferences.themeMode()
+        val themeMode by themeModePref.collectAsState()
 
         return listOf(
             Preference.PreferenceGroup(
@@ -689,15 +745,41 @@ object SettingsDictionaryScreen : SearchableSettings {
                             navigator.push(AppCustomThemeColorPickerScreen(isDictionary = true))
                         },
                     ),
-                    Preference.PreferenceItem.ListPreference(
-                        preference = dictionaryPreferences.themeMode(),
-                        entries = persistentListOf(
-                            "system" to stringResource(MR.strings.theme_system),
-                            "light" to stringResource(MR.strings.theme_light),
-                            "dark" to stringResource(MR.strings.theme_dark),
-                            "pure_black" to stringResource(MR.strings.pref_dict_theme_pure_black),
-                        ).associate { it.first to it.second }.toPersistentMap(),
-                        title = stringResource(KMR.strings.pref_dict_theme),
+                    Preference.PreferenceItem.CustomPreference(
+                        title = "Dictionary theme",
+                        content = {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                            ) {
+                                Text(
+                                    text = "Dictionary theme",
+                                    style = MaterialTheme.typography.titleMedium,
+                                )
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 8.dp)
+                                        .horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    val chips = listOf(
+                                        "system" to stringResource(MR.strings.theme_system),
+                                        "light" to stringResource(MR.strings.theme_light),
+                                        "dark" to stringResource(MR.strings.theme_dark),
+                                        "pure_black" to stringResource(MR.strings.pref_dict_theme_pure_black),
+                                    )
+                                    chips.forEach { (value, label) ->
+                                        FilterChip(
+                                            selected = themeMode == value,
+                                            onClick = { themeModePref.set(value) },
+                                            label = { Text(label) },
+                                        )
+                                    }
+                                }
+                            }
+                        },
                     ),
                     Preference.PreferenceItem.SwitchPreference(
                         preference = dictionaryPreferences.eInkMode(),
@@ -765,14 +847,88 @@ object SettingsDictionaryScreen : SearchableSettings {
             Preference.PreferenceGroup(
                 title = stringResource(KMR.strings.pref_dict_content),
                 preferenceItems = persistentListOf(
-                    Preference.PreferenceItem.SwitchPreference(
-                        preference = dictionaryPreferences.showFrequencyHarmonic(),
-                        title = stringResource(MR.strings.pref_dict_show_frequency_harmonic),
-                        subtitle = stringResource(MR.strings.pref_dict_show_frequency_harmonic_summary),
+                    Preference.PreferenceItem.CustomPreference(
+                        title = stringResource(MR.strings.pref_dict_frequency_display),
+                        content = {
+                            val showFreqHarmonicPref = dictionaryPreferences.showFrequencyHarmonic()
+                            val showFreqHarmonic by showFreqHarmonicPref.collectAsState()
+                            val showFreqAveragePref = dictionaryPreferences.showFrequencyAverage()
+                            val showFreqAverage by showFreqAveragePref.collectAsState()
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Text(
+                                    text = stringResource(MR.strings.pref_dict_frequency_display),
+                                    style = MaterialTheme.typography.titleMedium,
+                                )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    FilterChip(
+                                        selected = showFreqHarmonic,
+                                        onClick = { showFreqHarmonicPref.set(!showFreqHarmonic) },
+                                        label = { Text("Harmonic rank") },
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    FilterChip(
+                                        selected = showFreqAverage,
+                                        onClick = { showFreqAveragePref.set(!showFreqAverage) },
+                                        label = {
+                                            Text(stringResource(MR.strings.pref_dict_show_frequency_average))
+                                        },
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                }
+                            }
+                        },
                     ),
-                    Preference.PreferenceItem.SwitchPreference(
-                        preference = dictionaryPreferences.showFrequencyAverage(),
-                        title = stringResource(MR.strings.pref_dict_show_frequency_average),
+                    Preference.PreferenceItem.CustomPreference(
+                        title = stringResource(MR.strings.pref_dict_pitch_accent_display),
+                        content = {
+                            val showPitchDiagramPref = dictionaryPreferences.showPitchDiagram()
+                            val showPitchDiagram by showPitchDiagramPref.collectAsState()
+                            val showPitchNumberPref = dictionaryPreferences.showPitchNumber()
+                            val showPitchNumber by showPitchNumberPref.collectAsState()
+                            val showPitchTextPref = dictionaryPreferences.showPitchText()
+                            val showPitchText by showPitchTextPref.collectAsState()
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Text(
+                                    text = stringResource(MR.strings.pref_dict_pitch_accent_display),
+                                    style = MaterialTheme.typography.titleMedium,
+                                )
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    FilterChip(
+                                        selected = showPitchDiagram,
+                                        onClick = { showPitchDiagramPref.set(!showPitchDiagram) },
+                                        label = { Text(stringResource(MR.strings.pref_dict_pitch_diagram)) },
+                                    )
+                                    FilterChip(
+                                        selected = showPitchNumber,
+                                        onClick = { showPitchNumberPref.set(!showPitchNumber) },
+                                        label = { Text(stringResource(MR.strings.pref_dict_pitch_number)) },
+                                    )
+                                    FilterChip(
+                                        selected = showPitchText,
+                                        onClick = { showPitchTextPref.set(!showPitchText) },
+                                        label = { Text(stringResource(MR.strings.pref_dict_pitch_text)) },
+                                    )
+                                }
+                            }
+                        },
                     ),
                     Preference.PreferenceItem.SwitchPreference(
                         preference = dictionaryPreferences.groupPitches(),
@@ -797,18 +953,6 @@ object SettingsDictionaryScreen : SearchableSettings {
                             "popup" to stringResource(MR.strings.pref_dict_recursive_mode_popup),
                         ).associate { it.first to it.second }.toPersistentMap(),
                         title = stringResource(MR.strings.pref_dict_recursive_mode),
-                    ),
-                    Preference.PreferenceItem.SwitchPreference(
-                        preference = dictionaryPreferences.showPitchDiagram(),
-                        title = stringResource(MR.strings.pref_dict_pitch_diagram),
-                    ),
-                    Preference.PreferenceItem.SwitchPreference(
-                        preference = dictionaryPreferences.showPitchNumber(),
-                        title = stringResource(MR.strings.pref_dict_pitch_number),
-                    ),
-                    Preference.PreferenceItem.SwitchPreference(
-                        preference = dictionaryPreferences.showPitchText(),
-                        title = stringResource(MR.strings.pref_dict_pitch_text),
                     ),
                     Preference.PreferenceItem.SwitchPreference(
                         preference = dictionaryPreferences.autoKanaConversion(),
@@ -1018,62 +1162,98 @@ object SettingsDictionaryScreen : SearchableSettings {
             )
         }
 
-        val languages = persistentListOf(
-            "" to "Any (All)",
-            "ja" to "Japanese",
-            "ko" to "Korean",
-            "ar" to "Arabic",
-            "zh" to "Chinese",
-            "en" to "English",
-            "de" to "German",
-            "fr" to "French",
-            "ru" to "Russian",
-            "es" to "Spanish",
-            "it" to "Italian",
-        ).associate { it.first to it.second }.toPersistentMap()
-
         return Preference.PreferenceGroup(
             title = stringResource(MR.strings.pref_anki_profiles),
             preferenceItems = persistentListOf(
-                Preference.PreferenceItem.BasicListPreference(
-                    value = activeProfile.id,
-                    entries = profiles.associate { it.id to it.name }.toPersistentMap(),
-                    title = stringResource(KMR.strings.pref_dict_active_profile),
-                    onValueChanged = { id ->
-                        profileStore.setActiveProfile(id)
-                    },
-                ),
-                Preference.PreferenceItem.BasicListPreference(
-                    value = activeProfile.languageCode,
-                    entries = languages,
-                    title = stringResource(KMR.strings.pref_dict_profile_language),
-                    onValueChanged = { code ->
-                        profileStore.updateProfile(
-                            profileStore.getActiveProfile().copy(languageCode = code),
-                        )
-                    },
-                ),
-                Preference.PreferenceItem.TextPreference(
-                    title = stringResource(MR.strings.pref_anki_profile_new),
-                    subtitle = stringResource(MR.strings.pref_anki_profile_clone),
-                    onClick = { showNewDialog = true },
-                ),
-                Preference.PreferenceItem.TextPreference(
-                    title = stringResource(MR.strings.pref_anki_profile_rename),
-                    subtitle = activeProfile.name,
-                    onClick = { showRenameDialog = activeProfile },
-                ),
-                Preference.PreferenceItem.TextPreference(
-                    title = stringResource(MR.strings.pref_anki_profile_delete),
-                    subtitle = if (profiles.size > 1) {
-                        stringResource(MR.strings.pref_anki_profile_delete_confirm, activeProfile.name)
-                    } else {
-                        stringResource(MR.strings.pref_anki_profile_cannot_delete_last)
-                    },
-                    enabled = profiles.size > 1,
-                    onClick = { showDeleteDialog = activeProfile },
-                ),
-            ),
+                Preference.PreferenceItem.CustomPreference(
+                    title = stringResource(MR.strings.pref_anki_profiles),
+                    content = {
+                        Column(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                                Text(
+                                    text = stringResource(MR.strings.pref_anki_profile_active, activeProfile.name),
+                                    style = MaterialTheme.typography.titleMedium,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                IconButton(onClick = { showRenameDialog = activeProfile }) {
+                                    Icon(imageVector = Icons.Outlined.Edit, contentDescription = "Rename")
+                                }
+                                IconButton(
+                                    onClick = { showDeleteDialog = activeProfile },
+                                    enabled = profiles.size > 1
+                                ) {
+                                    Icon(imageVector = Icons.Outlined.Delete, contentDescription = "Delete")
+                                }
+                            }
+                            androidx.compose.foundation.lazy.LazyRow(
+                                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                profiles.forEach { profile ->
+                                    item {
+                                        androidx.compose.material3.FilterChip(
+                                            selected = profile.id == activeProfile.id,
+                                            onClick = { profileStore.setActiveProfile(profile.id) },
+                                            label = { Text(profile.name) },
+                                        )
+                                    }
+                                }
+                                item {
+                                    androidx.compose.material3.FilterChip(
+                                        selected = false,
+                                        onClick = { showNewDialog = true },
+                                        label = { Text("+") },
+                                    )
+                                }
+                            }
+
+                            // Language selector
+                            var langExpanded by remember { mutableStateOf(false) }
+                            val languages = listOf(
+                                "" to "Any (All)",
+                                "ja" to "Japanese",
+                                "ko" to "Korean",
+                                "ar" to "Arabic",
+                                "zh" to "Chinese",
+                                "en" to "English",
+                                "de" to "German",
+                                "fr" to "French",
+                                "ru" to "Russian",
+                                "es" to "Spanish",
+                                "it" to "Italian",
+                            )
+                            val currentLangName = languages.find { it.first == activeProfile.languageCode }?.second ?: activeProfile.languageCode
+
+                            Box(modifier = Modifier.padding(top = 8.dp)) {
+                                OutlinedButton(
+                                    onClick = { langExpanded = true },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text("Language: $currentLangName")
+                                    Icon(Icons.Outlined.KeyboardArrowDown, null)
+                                }
+                                DropdownMenu(
+                                    expanded = langExpanded,
+                                    onDismissRequest = { langExpanded = false }
+                                ) {
+                                    languages.forEach { (code, name) ->
+                                        DropdownMenuItem(
+                                            text = { Text(name) },
+                                            onClick = {
+                                                profileStore.updateProfile(profileStore.getActiveProfile().copy(languageCode = code))
+                                                langExpanded = false
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                )
+            )
         )
     }
 
@@ -1327,185 +1507,61 @@ object SettingsDictionaryScreen : SearchableSettings {
                                     verticalArrangement = Arrangement.spacedBy(10.dp),
                                 ) {
                                     item(key = "collapse_behavior") {
-                                    Surface(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
-                                        shape = RoundedCornerShape(12.dp),
-                                    ) {
-                                        Column(
-                                            modifier = Modifier.padding(12.dp),
-                                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                                        Surface(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                                            shape = RoundedCornerShape(12.dp),
                                         ) {
-                                            Text(
-                                                text = "Collapse behavior",
-                                                style = MaterialTheme.typography.titleSmall,
-                                            )
-                                            Text(
-                                                text = "Controls which dictionary groups open first in lookup results.",
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            )
-
-                                            var collapseMenuExpanded by remember { mutableStateOf(false) }
-                                            Box {
-                                                OutlinedButton(
-                                                    onClick = { collapseMenuExpanded = true },
-                                                    modifier = Modifier.fillMaxWidth(),
-                                                ) {
-                                                    Text(
-                                                        text = collapseModeLabel,
-                                                        modifier = Modifier.weight(1f),
-                                                    )
-                                                    Icon(
-                                                        imageVector = Icons.Outlined.KeyboardArrowDown,
-                                                        contentDescription = null,
-                                                        modifier = Modifier.size(18.dp),
-                                                    )
-                                                }
-                                                DropdownMenu(
-                                                    expanded = collapseMenuExpanded,
-                                                    onDismissRequest = { collapseMenuExpanded = false },
-                                                ) {
-                                                    collapseModeOptions.forEach { (mode, label) ->
-                                                        DropdownMenuItem(
-                                                            text = { Text(label) },
-                                                            onClick = {
-                                                                profileStore.updateProfile(
-                                                                    profileStore.getActiveProfile().copy(dictionaryCollapseMode = mode),
-                                                                )
-                                                                collapseMenuExpanded = false
-                                                            },
-                                                        )
-                                            }
-                                        }
-                                    }
-                                        val autoUpdateEnabled by dictionaryPreferences.autoUpdateEnabled().collectAsState()
-                                        val autoUpdateInterval by dictionaryPreferences.autoUpdateInterval().collectAsState()
-                                        val lastCheckMs by dictionaryPreferences.lastDictUpdateCheck().collectAsState()
-                                        val intervalOptions = listOf(
-                                            1 to "1h", 6 to "6h", 12 to "12h", 24 to "24h", 48 to "48h", 72 to "72h", 168 to "7d",
-                                        )
-                                        var intervalExpanded by remember { mutableStateOf(false) }
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(top = 4.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                        ) {
-                                            Box {
-                                                IconButton(
-                                                    onClick = {
-                                                        val newVal = !autoUpdateEnabled
-                                                        dictionaryPreferences.autoUpdateEnabled().set(newVal)
-                                                        if (newVal) {
-                                                            DictionaryUpdateJob.setupTask(context, true, autoUpdateInterval)
-                                                        } else {
-                                                            DictionaryUpdateJob.setupTask(context, false)
-                                                        }
-                                                    },
-                                                    modifier = Modifier.size(28.dp),
-                                                ) {
-                                                    Box {
-                                                        Icon(
-                                                            imageVector = Icons.Outlined.Sync,
-                                                            contentDescription = if (autoUpdateEnabled) "Disable auto-update" else "Enable auto-update",
-                                                            tint = if (autoUpdateEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                                            modifier = Modifier.size(18.dp),
-                                                        )
-                                                        if (!autoUpdateEnabled) {
-                                                            Canvas(modifier = Modifier.matchParentSize()) {
-                                                                val p = androidx.compose.ui.graphics.Path().apply {
-                                                                    moveTo(0f, 0f)
-                                                                    lineTo(size.width, size.height)
-                                                                }
-                                                                drawPath(
-                                                                    p,
-                                                                    color = androidx.compose.ui.graphics.Color.Red.copy(alpha = 0.7f),
-                                                                    style = androidx.compose.ui.graphics.drawscope.Stroke(
-                                                                        width = 2.5f,
-                                                                        pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(
-                                                                            floatArrayOf(6f, 4f), 0f,
-                                                                        ),
-                                                                    ),
-                                                                )
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                            Spacer(Modifier.width(4.dp))
-                                            Text(
-                                                text = if (autoUpdateEnabled) "ON" else "OFF",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-                                                color = if (autoUpdateEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
-                                            )
-                                            Spacer(Modifier.width(8.dp))
-                                            Column(modifier = Modifier.weight(1f)) {
+                                            Column(
+                                                modifier = Modifier.padding(12.dp),
+                                                verticalArrangement = Arrangement.spacedBy(10.dp),
+                                            ) {
                                                 Text(
-                                                    text = "Auto-update",
+                                                    text = "Collapse behavior",
+                                                    style = MaterialTheme.typography.titleSmall,
+                                                )
+                                                Text(
+                                                    text = "Controls which dictionary groups open first in lookup results.",
                                                     style = MaterialTheme.typography.bodySmall,
                                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                                 )
-                                                if (lastCheckMs > 0L) {
-                                                    val sdf = remember { java.text.SimpleDateFormat("MM/dd HH:mm", java.util.Locale.getDefault()) }
-                                                    Text(
-                                                        text = "Last: ${sdf.format(java.util.Date(lastCheckMs))}",
-                                                        style = MaterialTheme.typography.labelSmall,
-                                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                                                    )
-                                                }
-                                            }
-                                            Box {
-                                                OutlinedButton(
-                                                    onClick = { intervalExpanded = true },
-                                                    modifier = Modifier.height(28.dp),
-                                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                                                ) {
-                                                    Text(
-                                                        text = intervalOptions.find { it.first == autoUpdateInterval }?.second ?: "24h",
-                                                        style = MaterialTheme.typography.labelSmall,
-                                                    )
-                                                    Icon(
-                                                        imageVector = Icons.Outlined.KeyboardArrowDown,
-                                                        contentDescription = null,
-                                                        modifier = Modifier.size(14.dp),
-                                                    )
-                                                }
-                                                DropdownMenu(
-                                                    expanded = intervalExpanded,
-                                                    onDismissRequest = { intervalExpanded = false },
-                                                ) {
-                                                    intervalOptions.forEach { (hours, label) ->
-                                                        DropdownMenuItem(
-                                                            text = { Text(label) },
-                                                            onClick = {
-                                                                dictionaryPreferences.autoUpdateInterval().set(hours)
-                                                                if (autoUpdateEnabled) {
-                                                                    DictionaryUpdateJob.setupTask(context, true, hours)
-                                                                }
-                                                                intervalExpanded = false
-                                                            },
+
+                                                var collapseMenuExpanded by remember { mutableStateOf(false) }
+                                                Box {
+                                                    OutlinedButton(
+                                                        onClick = { collapseMenuExpanded = true },
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                    ) {
+                                                        Text(
+                                                            text = collapseModeLabel,
+                                                            modifier = Modifier.weight(1f),
                                                         )
+                                                        Icon(
+                                                            imageVector = Icons.Outlined.KeyboardArrowDown,
+                                                            contentDescription = null,
+                                                            modifier = Modifier.size(18.dp),
+                                                        )
+                                                    }
+                                                    DropdownMenu(
+                                                        expanded = collapseMenuExpanded,
+                                                        onDismissRequest = { collapseMenuExpanded = false },
+                                                    ) {
+                                                        collapseModeOptions.forEach { (mode, label) ->
+                                                            DropdownMenuItem(
+                                                                text = { Text(label) },
+                                                                onClick = {
+                                                                    profileStore.updateProfile(
+                                                                        profileStore.getActiveProfile().copy(dictionaryCollapseMode = mode),
+                                                                    )
+                                                                    collapseMenuExpanded = false
+                                                                },
+                                                            )
+                                                        }
                                                     }
                                                 }
                                             }
-                                            Spacer(Modifier.width(4.dp))
-                                            IconButton(
-                                                onClick = { DictionaryUpdateJob.checkNow(context) },
-                                                modifier = Modifier.size(28.dp),
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Outlined.CloudDownload,
-                                                    contentDescription = "Check now",
-                                                    tint = MaterialTheme.colorScheme.primary,
-                                                    modifier = Modifier.size(18.dp),
-                                                )
-                                            }
                                         }
                                     }
-                                }
-                            }
 
                                 item(key = "type_filter") {
                                     Surface(
