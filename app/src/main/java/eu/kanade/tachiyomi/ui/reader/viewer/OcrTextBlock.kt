@@ -54,6 +54,38 @@ val OcrTextBlock.orderedFullText: String
     get() = orderedLineIndices().joinToString("") { index -> lines[index] }
 
 /**
+ * Returns the full text of the block with a space separator between lines for
+ * horizontal text. Used for display in the selection panel and popup sentence
+ * context where words at line boundaries would otherwise be concatenated.
+ * Adjacent-line word overlap from OCR boundary duplication is trimmed.
+ */
+val OcrTextBlock.displayText: String
+    get() {
+        if (vertical) return lines.joinToString("")
+        val out = mutableListOf(lines.firstOrNull() ?: return "")
+        for (i in 1 until lines.size) {
+            out.add(trimLineOverlap(out.last(), lines[i]))
+        }
+        return out.joinToString(" ")
+    }
+
+/**
+ * Returns display text in reading order with a space separator between lines
+ * for horizontal text.
+ */
+val OcrTextBlock.orderedDisplayText: String
+    get() {
+        val indices = orderedLineIndices()
+        if (vertical) return indices.joinToString("") { lines[it] }
+        val ordered = indices.map { lines[it] }
+        val out = mutableListOf(ordered.firstOrNull() ?: return "")
+        for (i in 1 until ordered.size) {
+            out.add(trimLineOverlap(out.last(), ordered[i]))
+        }
+        return out.joinToString(" ")
+    }
+
+/**
  * Converts an offset based on [fullText] to the equivalent offset in
  * [orderedFullText].
  */
@@ -176,4 +208,26 @@ internal fun uniformCharOffset(
     val charIndex = (localX / (screenW / line.length.coerceAtLeast(1)))
         .toInt().coerceIn(0, line.length - 1)
     return block.lines.take(lineIndex).sumOf { it.length } + charIndex
+}
+
+/**
+ * Trims any leading text from [curr] that duplicates the trailing text of
+ * [prev] at an OCR line boundary. Only triggers for ≥4-char matches that
+ * are whole-word on both sides, avoiding false positives on short /
+ * non-whitespace-delimited text (CJK).
+ */
+private fun trimLineOverlap(prev: String, curr: String): String {
+    val a = prev.trimEnd()
+    val b = curr.trimStart()
+    if (a.length < 4 || b.length < 4) return curr.trimStart()
+    val maxLen = minOf(a.length, b.length)
+    for (len in maxLen downTo 4) {
+        if (a.takeLast(len) != b.take(len)) continue
+        val beforeWord = len == a.length || a[a.length - len - 1].isWhitespace()
+        val afterWord = len == b.length || b[len].isWhitespace()
+        if (beforeWord && afterWord) {
+            return b.substring(len).trimStart()
+        }
+    }
+    return curr.trimStart()
 }

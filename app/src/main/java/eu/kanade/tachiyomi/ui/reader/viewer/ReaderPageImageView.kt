@@ -712,7 +712,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
         viewX: Float,
         viewY: Float,
     ): Boolean {
-        val selectionText = block.orderedFullText.ifBlank { block.fullText }
+        val selectionText = block.orderedDisplayText.ifBlank { block.displayText }
         if (selectionText.isBlank()) return true
 
         logcat {
@@ -796,7 +796,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
             logcat(LogPriority.WARN) { "OCR lookup string is blank" }
             return true
         }
-        val sentenceText = block.orderedFullText
+        val sentenceText = block.orderedDisplayText
         val sentenceOffset = block.toOrderedOffset(charOffset)
 
         ocrPopupLookupString = lookupString

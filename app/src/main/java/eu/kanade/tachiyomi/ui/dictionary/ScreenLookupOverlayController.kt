@@ -48,6 +48,7 @@ import eu.kanade.tachiyomi.data.ocr.recognizePage
 import eu.kanade.tachiyomi.ui.reader.viewer.OcrLookupPopup
 import eu.kanade.tachiyomi.ui.reader.viewer.OcrTextBlock
 import eu.kanade.tachiyomi.ui.reader.viewer.extractOcrLookupString
+import eu.kanade.tachiyomi.ui.reader.viewer.displayText
 import eu.kanade.tachiyomi.ui.reader.viewer.fullText
 import eu.kanade.tachiyomi.ui.reader.viewer.isLookupStartChar
 import eu.kanade.tachiyomi.util.view.setComposeContent
@@ -345,7 +346,7 @@ internal fun ScreenLookupOverlay(
                         selection = OcrSelection(
                             block = tapped,
                             lookupString = lookupString,
-                            sentence = tapped.fullText,
+                            sentence = tapped.displayText,
                             sentenceOffset = charOffset,
                             anchorX = tapped.xmin * widthPx,
                             anchorY = tapped.ymin * heightPx,
